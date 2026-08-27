@@ -33,6 +33,7 @@ NEED_PIP=""
 MISSING_TOOLS=""
 NEED_DB_START=""
 NEED_DB_PROVISION=""
+NEED_GH=""
 
 # ── Outils / chemins ───────────────────────────────────────────────
 PY=""
@@ -118,6 +119,17 @@ for tool in nmap whois whatweb curl dig nikto; do
 done
 
 # ═══════════════════════════════════════════════════════════════════
+#  4b. GITHUB CLI (gh) — pour commit_gh.sh
+# ═══════════════════════════════════════════════════════════════════
+section "GitHub CLI (gh)"
+if command -v gh >/dev/null 2>&1; then
+    ok "gh installé ($(gh --version 2>/dev/null | head -1))"
+else
+    fail "gh non installé"
+    NEED_GH="1"
+fi
+
+# ═══════════════════════════════════════════════════════════════════
 #  5. MARIADB
 # ═══════════════════════════════════════════════════════════════════
 section "MariaDB (base de données)"
@@ -200,6 +212,7 @@ FAIL_COUNT=0
 [[ -n "$MISSING_TOOLS" ]] && FAIL_COUNT=$((FAIL_COUNT+1))
 [[ -n "$NEED_DB_START" ]] && FAIL_COUNT=$((FAIL_COUNT+1))
 [[ -n "$NEED_DB_PROVISION" ]] && FAIL_COUNT=$((FAIL_COUNT+1))
+[[ -n "$NEED_GH" ]] && FAIL_COUNT=$((FAIL_COUNT+1))
 
 section "Résultat"
 if [[ "$FAIL_COUNT" -eq 0 ]]; then
@@ -308,6 +321,21 @@ SQL
         ok "Base, utilisateur et tables créés (ou déjà présents)"
     else
         warn "Pas de client SQL ni sudo — configure la base manuellement (voir README)"
+    fi
+fi
+
+if [[ -n "$NEED_GH" ]] && ask_fix "Installer GitHub CLI (gh)"; then
+    if [[ -n "$SUDO" ]]; then
+        "$SUDO" mkdir -p -m 755 /etc/apt/keyrings
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | "$SUDO" tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+        "$SUDO" chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            | "$SUDO" tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+        "$SUDO" apt-get update -qq
+        "$SUDO" apt-get install -y gh && ok "gh installé"
+    else
+        warn "Pas de sudo — installe gh manuellement (voir README)"
     fi
 fi
 
