@@ -65,7 +65,7 @@ else
     if ask_fix "Installer GitHub CLI maintenant"; then
         install_gh && ok "gh installé" || { fail "Installation échouée."; exit 1; }
     else
-        error "gh est requis pour commiter — abandon."
+        fail "gh est requis pour commiter — abandon."
         exit 1
     fi
 fi
@@ -91,6 +91,11 @@ else
         fail "Authentification échouée — token invalide ?"
         exit 1
     fi
+fi
+
+# S'assurer que git utilise les identifiants gh pour les opérations HTTPS
+if gh auth setup-git >/dev/null 2>&1; then
+    info "Git configuré pour utiliser les identifiants gh."
 fi
 
 # ═══════════════════════════════════════════════════════════════════
@@ -129,11 +134,66 @@ else
     exit 1
 fi
 
-if ask_fix "Pousser vers le dépôt distant (git push)"; then
-    if git -C "$SCRIPT_DIR" push; then
-        ok "Poussé sur le dépôt distant."
+# ═══════════════════════════════════════════════════════════════════
+#  4. PUSH
+# ═══════════════════════════════════════════════════════════════════
+section "Push"
+
+BRANCH="$(git -C "$SCRIPT_DIR" branch --show-current 2>/dev/null)"
+
+# Remote de push : « origin » (votre fork) si présent, sinon le remote suivi.
+PUSH_REMOTE=""
+if git -C "$SCRIPT_DIR" remote get-url origin >/dev/null 2>&1; then
+    PUSH_REMOTE="origin"
+fi
+
+do_push() {
+    if [[ -n "$PUSH_REMOTE" ]]; then
+        info "Pousser la branche « $BRANCH » vers $PUSH_REMOTE ..."
+        git -C "$SCRIPT_DIR" push "$PUSH_REMOTE" "$BRANCH"
     else
-        warn "Push échoué (pas de remote / upstream ?). Le commit local est conservé."
+        info "Pousser la branche « $BRANCH » (remote suivi) ..."
+        git -C "$SCRIPT_DIR" push
+    fi
+}
+
+verify_push() {
+    # Vérifie que HEAD est bien présent sur le remote poussé.
+    local remote head
+    head="$(git -C "$SCRIPT_DIR" rev-parse HEAD)"
+    remote="${PUSH_REMOTE:-$(git -C "$SCRIPT_DIR" config --get "branch.$BRANCH.remote" 2>/dev/null)}"
+    [[ -z "$remote" ]] && return 1
+    git -C "$SCRIPT_DIR" ls-remote "$remote" "refs/heads/$BRANCH" 2>/dev/null | grep -q "$head"
+}
+
+if ask_fix "Pousser vers le dépôt distant"; then
+    if do_push; then
+        if verify_push; then
+            ok "Push réussi et vérifié (HEAD présent sur le remote)."
+        else
+            ok "Push réussi (sortie git OK)."
+        fi
+    else
+        fail "Le push a échoué (voir erreur git ci-dessus)."
+        while true; do
+            echo
+            warn "Causes possibles :"
+            warn "  - Pas de droit d'écriture sur ce remote (ex: upstream d'un fork)."
+            warn "  - URL du remote incorrecte ou dépôt inexistant."
+            if [[ -n "$PUSH_REMOTE" ]]; then
+                info "Remote « $PUSH_REMOTE » : $(git -C "$SCRIPT_DIR" remote get-url "$PUSH_REMOTE" 2>/dev/null)"
+                info "Corrige l'URL : git remote set-url $PUSH_REMOTE <URL>"
+            fi
+            if ! ask_fix "Réessayer le push"; then
+                warn "Push non effectué — le commit local est conservé."
+                break
+            fi
+            if do_push; then
+                ok "Push réussi."
+                break
+            fi
+            fail "Nouvel échec du push (voir erreur git ci-dessus)."
+        done
     fi
 fi
 
