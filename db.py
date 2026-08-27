@@ -283,6 +283,22 @@ def delete_full_session(sl_no: int):
     print(f"[+] Full session SL#{sl_no} deleted from all tables.")
 
 
+def clear_session_results(sl_no: int):
+    """
+    Delete all analysis results for a session (fixes, exploits,
+    vulnerabilities, summary) but keep the history row.
+    Used before re-running the AI analysis.
+    """
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM fixes             WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM exploits_attempted WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM vulnerabilities   WHERE sl_no = %s", (sl_no,))
+    c.execute("DELETE FROM summary           WHERE sl_no = %s", (sl_no,))
+    conn.commit()
+    conn.close()
+
+
 # ─────────────────────────────────────────────
 # DISPLAY HELPERS
 # ─────────────────────────────────────────────

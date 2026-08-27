@@ -19,22 +19,25 @@ AI-powered penetration testing assistant using local LLM on linux (Parrot OS)
 
 ## 📌 What is Metatron?
 
-**Metatron** is a CLI-based AI penetration testing assistant that runs entirely on your local machine — no cloud, no API keys, no subscriptions.
+**Metatron** is a CLI-based AI penetration testing assistant.
 
-You give it a target IP or domain. It runs real recon tools (nmap, whois, whatweb, curl, dig, nikto), feeds all results to a locally running AI model, and the AI analyzes the target, identifies vulnerabilities, suggests exploits, and recommends fixes. Everything gets saved to a MariaDB database with full scan history.
+You give it a target IP or domain. It runs real recon tools (nmap, whois, whatweb, curl, dig, nikto), feeds all results to an AI model, and the AI analyzes the target, identifies vulnerabilities, suggests exploits, and recommends fixes. Everything gets saved to a MariaDB database with full scan history.
+
+The AI backend is **configurable** from the CLI: use a **local Ollama** model (fully offline) **or** an **OpenRouter** model via API (cloud). Switch anytime from the *Settings* menu.
 
 ---
 
 ## ✨ Features
 
-- 🤖 **Local AI Analysis** — powered by `metatron-qwen` via Ollama, runs 100% offline
+- 🤖 **Dual AI backend** — local `metatron-qwen` via Ollama (offline) **or** OpenRouter (cloud)
+- ⚙️ **CLI settings** — switch provider, set/edit OpenRouter API key, pick model (cost shown), view remaining credits
 - 🔍 **Automated Recon** — nmap, whois, whatweb, curl headers, dig DNS, nikto
 - 🌐 **Web Search** — DuckDuckGo search + CVE lookup (no API key needed)
 - 🗄️ **MariaDB Backend** — full scan history with 5 linked tables
 - ✏️ **Edit / Delete** — modify any saved result directly from the CLI
 - 🔁 **Agentic Loop** — AI can request more tool runs mid-analysis
-- 🚫 **No API Keys** — everything is free and local
--📤 Export Reports
+- 🛠️ **Self-audit installer** — `install_audit.sh` checks everything and proposes fixes
+- 📤 Export Reports
 
 Metatron allows you to export scan results into clean, shareable report formats by selecting '2.view history'->select slno and export
 
@@ -73,7 +76,7 @@ Metatron allows you to export scan results into clean, shareable report formats 
 | Language   | Python 3                            |
 | AI Model   | metatron-qwen (fine-tuned Qwen 3.5) |
 | Base Model | huihui_ai/qwen3.5-abliterated:9b    |
-| LLM Runner | Ollama                              |
+| LLM Runner | Ollama **or** OpenRouter API        |
 | Database   | MariaDB                             |
 | OS         | Parrot OS (Debian-based)            |
 | Search     | DuckDuckGo (free, no key)           |
@@ -82,35 +85,65 @@ Metatron allows you to export scan results into clean, shareable report formats 
 
 ## ⚙️ Installation
 
-### 1. Clone the repository
+### 🚀 Quick start (recommended)
+
+The `install_audit.sh` script audits your system, prints a colored ✅/❌ report, and **offers** to fix anything missing (sudo, Python, venv, dependencies, system tools, MariaDB). Nothing is installed without your confirmation.
 
 ```bash
-git clone https://github.com/sooryathejas/METATRON.git
 cd METATRON
+./install_audit.sh
 ```
 
-### 2. Create and activate virtual environment
+Then launch:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+./venv/bin/python metatron.py
 ```
 
-### 3. Install Python dependencies
+> The script also detects Ollama as **optional** — you can skip it entirely and use OpenRouter instead (see below).
 
-```bash
-pip install -r requirements.txt
-```
+### Manual install (optional)
 
-### 4. Install system tools
+1. Clone the repository
 
-```bash
-sudo apt install nmap whois whatweb curl dnsutils nikto
-```
+   ```bash
+   git clone https://github.com/sooryathejas/METATRON.git
+   cd METATRON
+   ```
+
+2. Create and activate a virtual environment
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+3. Install Python dependencies
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Install system tools
+
+   ```bash
+   sudo apt install nmap whois whatweb curl dnsutils nikto
+   ```
+
+5. Set up the database (see [Database Setup](#-database-setup) below).
 
 ---
 
-## 🤖 AI Model Setup
+## 🤖 AI Backend Setup (choose one)
+
+Metatron supports **two** AI backends, switchable anytime from the CLI *Settings* menu (`[3] Settings (IA)`):
+
+| Backend   | Cost     | Requires                         |
+|-----------|----------|----------------------------------|
+| **Ollama**    | Free, offline | Ollama + `metatron-qwen` model |
+| **OpenRouter**| Pay-as-you-go | OpenRouter API key |
+
+### Option A — Ollama (local, offline)
 
 ### Step 1 — Install Ollama
 
@@ -152,9 +185,27 @@ ollama list
 
 You should see `metatron-qwen` in the list.
 
+### Option B — OpenRouter (cloud)
+
+1. Get an API key at [openrouter.ai/keys](https://openrouter.ai/keys).
+2. Launch Metatron and open the Settings menu:
+
+   ```bash
+   ./venv/bin/python metatron.py
+   ```
+
+3. In `[3] Settings (IA)`:
+   - `[2]` — paste your OpenRouter API key (stored in `~/.metatron/config.json`).
+   - `[3]` — pick a model from the live list; **the input/output cost is shown to the right** of each model.
+   - `[1]` — switch the provider to OpenRouter.
+
+The Settings menu also displays your **remaining credits** (fetched from `GET /api/v1/credits`).
+
 ---
 
 ## 🗄️ Database Setup
+
+> `./install_audit.sh` can create the database, user and tables automatically (reading the credentials from `db.py`). The manual steps below are provided for reference.
 
 ### Step 1 — Make sure MariaDB is running
 
@@ -187,8 +238,8 @@ mysql -u metatron -p123 metatron
 CREATE TABLE history (
   sl_no     INT AUTO_INCREMENT PRIMARY KEY,
   target    VARCHAR(255) NOT NULL,
-                      scan_date DATETIME NOT NULL,
-                      status    VARCHAR(50) DEFAULT 'active'
+  scan_date DATETIME NOT NULL,
+  status    VARCHAR(50) DEFAULT 'active'
 );
 
 CREATE TABLE vulnerabilities (
@@ -196,10 +247,10 @@ CREATE TABLE vulnerabilities (
   sl_no       INT,
   vuln_name   TEXT,
   severity    VARCHAR(50),
-                              port        VARCHAR(20),
-                              service     VARCHAR(100),
-                              description TEXT,
-                              FOREIGN KEY (sl_no) REFERENCES history(sl_no)
+  port        VARCHAR(20),
+  service     VARCHAR(100),
+  description TEXT,
+  FOREIGN KEY (sl_no) REFERENCES history(sl_no)
 );
 
 CREATE TABLE fixes (
@@ -208,8 +259,8 @@ CREATE TABLE fixes (
   vuln_id  INT,
   fix_text TEXT,
   source   VARCHAR(50),
-                    FOREIGN KEY (sl_no) REFERENCES history(sl_no),
-                    FOREIGN KEY (vuln_id) REFERENCES vulnerabilities(id)
+  FOREIGN KEY (sl_no) REFERENCES history(sl_no),
+  FOREIGN KEY (vuln_id) REFERENCES vulnerabilities(id)
 );
 
 CREATE TABLE exploits_attempted (
@@ -229,8 +280,8 @@ CREATE TABLE summary (
   raw_scan     LONGTEXT,
   ai_analysis  LONGTEXT,
   risk_level   VARCHAR(50),
-                      generated_at DATETIME,
-                      FOREIGN KEY (sl_no) REFERENCES history(sl_no)
+  generated_at DATETIME,
+  FOREIGN KEY (sl_no) REFERENCES history(sl_no)
 );
 ```
 
@@ -238,9 +289,9 @@ CREATE TABLE summary (
 
 ## 🚀 Usage
 
-Metatron needs **two terminal tabs** to run.
+Metatron needs **two terminal tabs** to run **only if you use Ollama**. With OpenRouter, a single tab is enough.
 
-### Terminal 1 — Load the AI model
+### Terminal 1 (Ollama only) — Load the AI model
 
 ```bash
 ollama run metatron-qwen
@@ -264,7 +315,8 @@ python metatron.py
 ```
   [1]  New Scan
   [2]  View History
-  [3]  Exit
+  [3]  Settings (IA)
+  [4]  Exit
 ```
 
 **2. Select [1] New Scan → enter your target:**
@@ -300,11 +352,14 @@ or
 
 ```
 METATRON/
-├── metatron.py       ← main CLI entry point
+├── metatron.py       ← main CLI entry point (+ preflight check)
+├── config.py         ← AI provider / API key / model settings
+├── install_audit.sh  ← self-audit installer (checks + optional fixes)
 ├── db.py             ← MariaDB connection and all CRUD operations
 ├── tools.py          ← recon tool runners (nmap, whois, etc.)
-├── llm.py            ← Ollama interface and AI tool dispatch loop
+├── llm.py            ← Ollama/OpenRouter interface + tool dispatch loop
 ├── search.py         ← DuckDuckGo web search and CVE lookup
+├── export.py         ← PDF / HTML report exporter
 ├── Modelfile         ← custom model config for metatron-qwen
 ├── requirements.txt  ← Python dependencies
 ├── .gitignore        ← excludes venv, pycache, db files
