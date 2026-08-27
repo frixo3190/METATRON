@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, Log, SelectionList, Static
+from textual.widgets import Footer, Header, Input, ProgressBar, RichLog, SelectionList, Static
 from textual import work
 
 import db
@@ -25,6 +25,32 @@ TOOL_FUNCS = {
     "nikto": tools.run_nikto,
 }
 
+_SEV_COLORS = {"CRITICAL": "red", "HIGH": "orange1", "MEDIUM": "yellow", "LOW": "green"}
+
+
+def _log_markup(line: str) -> str:
+    """Colore une ligne du journal de scan (outils, tours, sévérités, risque)."""
+    esc = str(line).replace("[", "\\[").replace("]", "\\]")
+    up = line.strip().upper()
+    if "TOUR" in up and ("ANALYSE" in up or "/" in up):
+        return f"[bold yellow]{esc}[/]"
+    if "ANALYSE FINALE" in up or "PLUS AUCUN OUTIL" in up:
+        return f"[bold green]{esc}[/]"
+    if line.strip().startswith("▸"):
+        return f"[bold cyan]{esc}[/]"
+    for sev, color in _SEV_COLORS.items():
+        if f"SEVERITY: {sev}" in up or f"SEVERITY:{sev}" in up:
+            return f"[bold {color}]{esc}[/]"
+    if up.startswith("RISK_LEVEL:"):
+        for sev, color in _SEV_COLORS.items():
+            if sev in up:
+                return f"[bold {color}]{esc}[/]"
+    if up.startswith(("VULN:", "EXPLOIT:", "ATTACK:", "ATTACK_CMDS:")):
+        return f"[bold cyan]{esc}[/]"
+    if up.startswith(("DESC:", "FIX:", "RESULT:", "NOTES:")):
+        return f"[dim]{esc}[/]"
+    return esc
+
 
 class NewScanScreen(Screen):
     """Formulaire : cible + choix des outils."""
@@ -34,6 +60,11 @@ class NewScanScreen(Screen):
         Binding("q", "app.pop_screen", description=i18n.t("binding.back"), id="binding.back", show=True),
         Binding("ctrl+r", "run", description=i18n.t("binding.scan_run"), id="binding.scan_run", show=True),
     ]
+
+    def __init__(self, target: str = "", preselected: list | None = None, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._initial_target = target
+        self._preselected = preselected or []
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -49,11 +80,19 @@ class NewScanScreen(Screen):
             (i18n.t("tool.nikto"), "nikto"),
             id="scan-tools",
         )
-        yield Static(f"[dim]{i18n.t('scan.hint')}[/]", id="scan-hint")
         yield Footer()
 
     def on_mount(self) -> None:
         i18n.localize_bindings(self)
+        if self._initial_target:
+            self.query_one("#scan-target", Input).value = self._initial_target
+        if self._preselected:
+            sel = self.query_one("#scan-tools", SelectionList)
+            for v in self._preselected:
+                try:
+                    sel.select(v)
+                except Exception:
+                    pass
         self.query_one("#scan-target", Input).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -108,7 +147,8 @@ class ScanRunScreen(Screen):
             f"[bold red]METATRON[/]  ·  [cyan]{i18n.t('scan.running')}[/]  ·  [dim]{self.target}[/]",
             id="run-title",
         )
-        yield Log(id="run-log")
+        yield ProgressBar(show_percentage=False, id="run-progress")
+        yield RichLog(id="run-log", markup=True, wrap=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -169,10 +209,14 @@ class ScanRunScreen(Screen):
         )
 
     def on_scan_run_screen_log_line(self, event: LogLine) -> None:
-        self.query_one("#run-log", Log).write_line(event.line)
+        self.query_one("#run-log", RichLog).write(_log_markup(event.line))
 
     def on_scan_run_screen_done(self, event: Done) -> None:
         self._done = True
+        try:
+            self.query_one("#run-progress", ProgressBar).display = False
+        except Exception:
+            pass
         self.app.notify(i18n.t("scan.done", sl=self.sl_no, risk=event.risk))
         # si une attaque est disponible, on propose le raccourci « a »
         self._first_attack = self._find_first_attack()

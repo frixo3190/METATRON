@@ -25,6 +25,7 @@ import db
 import export as export_mod
 import llm
 import logs
+import tools
 from tui import i18n
 from tui.screens.chat import ChatScreen
 from tui.screens.edit import EditItemScreen
@@ -130,6 +131,8 @@ class SessionDetailScreen(Screen):
         Binding("a", "attack", description=i18n.t("binding.attack"), id="binding.attack", show=False),
         Binding("x", "edit", description=i18n.t("binding.edit"), id="binding.edit", show=True),
         Binding("d", "delete", description=i18n.t("binding.delete"), id="binding.delete", show=True),
+        Binding("left", "prev_tab", show=False),
+        Binding("right", "next_tab", show=False),
     ]
 
     class ExportDone(Message):
@@ -166,11 +169,34 @@ class SessionDetailScreen(Screen):
 
     def on_tabbed_content_tab_activated(self, event) -> None:
         """Donne le focus à la liste du nouvel onglet (navigation clavier)."""
+        self._focus_active_list()
+
+    def action_prev_tab(self) -> None:
+        self._switch_tab(-1)
+
+    def action_next_tab(self) -> None:
+        self._switch_tab(1)
+
+    def _switch_tab(self, direction: int) -> None:
         try:
-            pane = event.tabbed_content.active_pane
+            tc = self.query_one(TabbedContent)
+            ids = [f"tab-{i + 1}" for i in range(tc.tab_count)]
+            current = tc.active if tc.active in ids else ids[0]
+            new_idx = (ids.index(current) + direction) % len(ids)
+            tc.active = ids[new_idx]
+            self._focus_active_list()
+        except Exception:
+            pass
+
+    def _focus_active_list(self) -> None:
+        try:
+            pane = self.query_one(TabbedContent).active_pane
             for w in pane.query(ListView):
                 w.focus()
-                break
+                return
+            for w in pane.query(VerticalScroll):
+                w.focus()
+                return
         except Exception:
             pass
 
@@ -412,22 +438,12 @@ class SessionDetailScreen(Screen):
         self.app.pop_screen()
 
     def action_rerun(self) -> None:
-        if not self.data or not self.data.get("summary"):
-            self.app.notify(i18n.t("rerun.no_scan"), severity="warning")
-            return
-        raw_scan = str(self.data["summary"][2] or "")
-        if not raw_scan.strip():
-            self.app.notify(i18n.t("rerun.no_scan"), severity="warning")
-            return
+        # Retourne sur la vue scan, pré-remplie (cible + outils détectés), sans lancer.
+        from tui.screens.scan import NewScanScreen
         target = self.data["history"][1]
-        self.app.push_screen(
-            RunAnalysisScreen(self.sl_no, target, raw_scan),
-            callback=self._on_rerun_done,
-        )
-
-    def _on_rerun_done(self, ok: bool) -> None:
-        if ok:
-            self.call_after_refresh(self._load)
+        raw_scan = str(self.data["summary"][2] or "") if self.data.get("summary") else ""
+        preselected = tools.detect_tools(raw_scan)
+        self.app.push_screen(NewScanScreen(target=target, preselected=preselected))
 
 
 class AttackScreen(Screen):

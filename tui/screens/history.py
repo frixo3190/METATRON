@@ -8,30 +8,9 @@ from textual.widgets import DataTable, Footer, Header, Static
 from textual import work
 
 import db
+import tools
 from tui import i18n
 from tui.screens.session import SessionDetailScreen
-
-
-_TOOL_MARKERS = {
-    "nmap":    ["NMAP OUTPUT"],
-    "whois":   ["WHOIS OUTPUT"],
-    "whatweb": ["WHATWEB OUTPUT"],
-    "curl":    ["CURL_HEADERS", "CURL HEADERS"],
-    "dig":     ["DIG DNS", "DIG OUTPUT"],
-    "nikto":   ["NIKTO OUTPUT"],
-}
-
-
-def _detect_tools(raw_scan) -> list:
-    """Détecte les outils de recon lancés, à partir du raw_scan enregistré."""
-    if not raw_scan:
-        return []
-    s = str(raw_scan).upper()
-    found = []
-    for tool, markers in _TOOL_MARKERS.items():
-        if any(m in s for m in markers):
-            found.append(tool)
-    return found
 
 
 def _tools_markup(tools: list) -> str:
@@ -94,13 +73,13 @@ class HistoryScreen(Screen):
         for r in event.rows:
             sl, target, date, status = r[0], r[1], str(r[2]), r[3]
             raw_scan = r[4] if len(r) > 4 else None
-            tools = _detect_tools(raw_scan)
+            detected = tools.detect_tools(raw_scan)
             table.add_row(
                 str(sl),
                 str(target or ""),
                 date,
                 str(status or ""),
-                _tools_markup(tools),
+                _tools_markup(detected),
                 key=str(sl),
             )
         self.query_one("#history-status", Static).update(

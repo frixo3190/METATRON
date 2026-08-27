@@ -157,6 +157,12 @@ ListView ListItem.--highlight {
     height: 1fr;
 }
 
+#run-progress {
+    margin: 0 2;
+    border: none;
+    height: 1;
+}
+
 #run-log-static {
     padding: 1;
     margin: 1 2;
@@ -253,10 +259,33 @@ ListView ListItem.--highlight {
     border-bottom: solid $primary;
 }
 
-#chat-log {
+#chat-messages {
     height: 1fr;
     background: $panel;
+    padding: 1;
+    overflow-y: auto;
+}
+
+.msg-row {
+    width: 100%;
+    height: auto;
+    margin: 1 0;
+}
+
+.bubble-user {
+    background: $primary 25%;
+    border: round $primary;
     padding: 0 1;
+    width: auto;
+    max-width: 72%;
+}
+
+.bubble-ai {
+    background: $error 16%;
+    border: round $error 55%;
+    padding: 0 1;
+    width: auto;
+    max-width: 92%;
 }
 
 #chat-input {

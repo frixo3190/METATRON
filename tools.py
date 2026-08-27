@@ -10,6 +10,29 @@ import subprocess
 import logs
 
 
+# ── Détection des outils lancés (à partir d'un raw_scan) ──
+TOOL_MARKERS = {
+    "nmap":    ["NMAP OUTPUT"],
+    "whois":   ["WHOIS OUTPUT"],
+    "whatweb": ["WHATWEB OUTPUT"],
+    "curl":    ["CURL_HEADERS", "CURL HEADERS"],
+    "dig":     ["DIG DNS", "DIG OUTPUT"],
+    "nikto":   ["NIKTO OUTPUT"],
+}
+
+
+def detect_tools(raw_scan) -> list:
+    """Retourne la liste des outils de recon présents dans un raw_scan."""
+    if not raw_scan:
+        return []
+    s = str(raw_scan).upper()
+    found = []
+    for tool, markers in TOOL_MARKERS.items():
+        if any(m in s for m in markers):
+            found.append(tool)
+    return found
+
+
 # ── Couleurs (affichage console uniquement) ──
 GREEN  = "\033[92m"
 CYAN   = "\033[96m"

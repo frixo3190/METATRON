@@ -1,24 +1,18 @@
-"""Écran de chat IA — split view : gauche = conversation, droite = contexte.
-
-La discussion est persistée en base (chat_key) et rechargée à l'ouverture.
-"""
+"""Écran de chat IA — bulles (IA à gauche / utilisateur à droite), Markdown."""
 
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, RichLog, Static
+from textual.widgets import Footer, Header, Input, LoadingIndicator, Markdown, Static
 from textual import work
 
 import db
 import llm
 import logs
+import prompts
 from tui import i18n
-
-
-def _esc(s) -> str:
-    return str(s or "").replace("[", "\\[").replace("]", "\\]")
 
 
 class ChatScreen(Screen):
@@ -39,7 +33,8 @@ class ChatScreen(Screen):
         self.target = target
         self.context_text = context_text
         self.chat_key = chat_key
-        self._history = []  # liste de dicts {"role", "content"}
+        self._history = []
+        self._thinking_row = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -49,7 +44,7 @@ class ChatScreen(Screen):
                     f"[bold red]METATRON[/]  ·  [cyan]{i18n.t('chat.title')}[/]",
                     id="chat-title",
                 )
-                yield RichLog(id="chat-log", markup=True, wrap=True)
+                yield VerticalScroll(id="chat-messages")
                 yield Input(placeholder=i18n.t("chat.input.placeholder"), id="chat-input")
             with VerticalScroll(id="chat-right"):
                 yield Static(f"[bold]{i18n.t('chat.context.title')}[/]", id="chat-context-title")
@@ -58,37 +53,47 @@ class ChatScreen(Screen):
 
     def on_mount(self) -> None:
         i18n.localize_bindings(self)
-        self._log = self.query_one("#chat-log", RichLog)
-        # Recharge la discussion persistée (si chat_key fourni)
         if self.chat_key:
             for role, content in db.get_chat_messages(self.chat_key):
                 self._history.append({"role": role, "content": content})
-                self._render_message(role, content)
+                self._add_bubble(role, content)
         if not self._history:
-            self._log.write(f"[dim]{i18n.t('chat.welcome')}[/]")
+            self._add_bubble(
+                "assistant", f"*{i18n.t('chat.welcome')}*"
+            )
         self.query_one("#chat-input", Input).focus()
 
-    def _render_message(self, role: str, content: str) -> None:
+    def _add_bubble(self, role: str, content: str) -> None:
+        container = self.query_one("#chat-messages", VerticalScroll)
         if role == "user":
-            self._log.write(f"[bold cyan]{i18n.t('chat.you')} :[/] [cyan]{_esc(content)}[/]")
+            bubble = Static(str(content), classes="bubble-user", markup=False)
+            align = "right"
         else:
-            self._log.write(f"[bold green]{i18n.t('chat.ai')} :[/] {_esc(content)}")
+            bubble = Markdown(str(content), classes="bubble-ai")
+            align = "left"
+        row = Horizontal(bubble, classes="msg-row")
+        row.styles.align_horizontal = align
+        container.mount(row)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         q = event.value.strip()
         if not q:
             return
         self.query_one("#chat-input", Input).value = ""
-        self._render_message("user", q)
+        self._add_bubble("user", q)
         self._history.append({"role": "user", "content": q})
         if self.chat_key:
             db.save_chat_message(self.chat_key, "user", q)
-        self._log.write(f"[dim]{i18n.t('chat.ai')} · {i18n.t('chat.thinking')}[/]")
+        # indicateur « réflexion »
+        container = self.query_one("#chat-messages", VerticalScroll)
+        self._thinking_row = Horizontal(LoadingIndicator(), classes="msg-row")
+        self._thinking_row.styles.align_horizontal = "left"
+        container.mount(self._thinking_row)
         self._ask_worker(q)
 
     @work(thread=True)
     def _ask_worker(self, q: str) -> None:
-        logs.set_log(lambda m: None)  # ne pas imprimer dans le terminal TUI
+        logs.set_log(lambda m: None)
         try:
             messages = [{"role": "system", "content": self._system_prompt()}]
             messages.extend(self._history)
@@ -101,15 +106,20 @@ class ChatScreen(Screen):
             logs.set_log(None)
 
     def _system_prompt(self) -> str:
-        return (
-            "Tu es METATRON, un assistant expert en test d'intrusion. "
-            "Tu discutes d'un résultat précis avec l'utilisateur.\n\n"
-            f"CIBLE : {self.target}\n\n"
-            "CONTEXTE :\n"
-            f"{self.context_text}\n\n"
-            "Réponds de façon précise, technique et utile. "
-            "Réponds dans la langue de la question de l'utilisateur."
+        template = prompts.get(
+            "chat_system_prompt",
+            "Tu es METATRON. CIBLE : {target}\n\nCONTEXTE :\n{context}",
         )
+        try:
+            return template.format(target=self.target, context=self.context_text)
+        except Exception:
+            return f"Tu es METATRON.\n\nCIBLE : {self.target}\n\nCONTEXTE :\n{self.context_text}"
 
-    def on_chat_screen_reply(self, event: Reply) -> None:
-        self._render_message("assistant", event.text)
+    async def on_chat_screen_reply(self, event: Reply) -> None:
+        if self._thinking_row is not None:
+            try:
+                await self._thinking_row.remove()
+            except Exception:
+                pass
+            self._thinking_row = None
+        self._add_bubble("assistant", event.text)

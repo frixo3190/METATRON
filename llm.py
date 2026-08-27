@@ -13,6 +13,7 @@ from tools import run_tool_by_command, run_nmap, run_curl_headers
 from search import handle_search_dispatch
 import config
 import logs
+from prompts import get as get_prompt
 
 OLLAMA_URL  = "http://localhost:11434/api/chat"
 OPENROUTER_URL        = "https://openrouter.ai/api/v1/chat/completions"
@@ -50,10 +51,10 @@ def language_instruction() -> str:
     return ""
 
 # ─────────────────────────────────────────────
-# SYSTEM PROMPT
+# SYSTEM PROMPT (chargé depuis config/prompt.json)
 # ─────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant running on Parrot OS.
+_DEFAULT_SYSTEM_PROMPT = """You are METATRON, an elite AI penetration testing assistant running on Parrot OS.
 You are precise, technical, and direct. No fluff.
 
 You have access to real tools. To use them, write tags in your response:
@@ -108,6 +109,8 @@ IMPORTANT RULES FOR ACCURACY:
 - ab and stress tools are not Slowloris unless confirmed
 - Only assign CRITICAL if there is direct evidence of exploitability
 - If evidence is weak mark severity as LOW with note: unconfirmed"""
+
+SYSTEM_PROMPT = get_prompt("system_prompt", _DEFAULT_SYSTEM_PROMPT)
 
 
 # ─────────────────────────────────────────────
@@ -453,7 +456,7 @@ def summarize_tool_output(raw_output: str) -> str:
 
     try:
         summary = ask_llm([
-    {"role": "system", "content": "You are a security data compressor. Extract only security-relevant facts. Return maximum 15 bullet points. Plain text only. No markdown."},
+    {"role": "system", "content": get_prompt("summarizer_prompt", "You are a security data compressor. Extract only security-relevant facts. Return maximum 15 bullet points. Plain text only. No markdown.")},
     {"role": "user", "content": f"Compress this tool output:\n{raw_output[:6000]}"} ],
             max_tokens=512, temperature=0.2)
         if summary.startswith("[!]"):
@@ -650,20 +653,22 @@ List all vulnerabilities, fixes, and suggest exploits where applicable."""
     ]
 
     final_response = ""
+    total_tours = 0
 
     for loop in range(MAX_TOOL_LOOPS):
         response = ask_llm(messages)
+        total_tours = loop + 1
 
-        logs.emit(f"\n{BOLD}{CYAN}{'═'*60}{RESET}")
-        logs.emit(f"{BOLD}{CYAN}  METATRON — Analyse — Tour {loop + 1}{RESET}")
-        logs.emit(f"{BOLD}{CYAN}{'═'*60}{RESET}")
+        logs.emit(f"\n{'═'*62}")
+        logs.emit(f"  ▸ TOUR {loop + 1}/{MAX_TOOL_LOOPS} — l'IA analyse et peut lancer des outils")
+        logs.emit(f"{'═'*62}")
         logs.emit(response)
 
         final_response = response
 
         tool_calls = extract_tool_calls(response)
         if not tool_calls:
-            logs.emit(f"\n{GREEN}  [✓] Analyse terminée — aucun appel d'outil.{RESET}")
+            logs.emit(f"\n  ✓ Analyse finale après {loop + 1} tour(s) — plus aucun outil demandé.")
             break
 
         tool_results = run_tool_calls(tool_calls)
@@ -687,8 +692,8 @@ If analysis is complete, give the final RISK_LEVEL and SUMMARY."""
     risk_level      = parse_risk_level(final_response)
     summary         = parse_summary(final_response)
 
-    logs.emit(f"\n{GREEN}[+] Résultat : {len(vulnerabilities)} vuln(s), "
-              f"{len(exploits)} exploit(s) | Risque : {BOLD}{risk_level}{RESET}")
+    logs.emit(f"\n[+] Résultat : {len(vulnerabilities)} vuln(s), "
+              f"{len(exploits)} exploit(s) | Risque : {risk_level}")
 
     return {
         "full_response":   final_response,

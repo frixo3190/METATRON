@@ -18,6 +18,7 @@ from textual import work
 
 import config
 import llm
+import prompts
 from tui import i18n
 
 
@@ -400,7 +401,7 @@ class TestOpenRouterScreen(Screen):
             return
         resp = llm.ask_openrouter([
             {"role": "user",
-             "content": "Réponds en une seule phrase : es-tu opérationnel et prêt à analyser des cibles ?"}
+             "content": prompts.get("test_prompt", "Réponds en une seule phrase : es-tu opérationnel ?")}
         ], max_tokens=128, temperature=0.3)
         self.post_message(self.TestDone(resp))
 
