@@ -1,6 +1,7 @@
-"""Écran Détail d'une session + export/suppression/relance + chat IA."""
+"""Écran Détail d'une session + chat IA + test d'attaque + export/suppression."""
 
 import os
+import subprocess
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -13,8 +14,10 @@ from textual.widgets import (
     Label,
     ListItem,
     ListView,
+    Log,
     Static,
     TabbedContent,
+    TextArea,
 )
 from textual import work
 
@@ -24,6 +27,7 @@ import llm
 import logs
 from tui import i18n
 from tui.screens.chat import ChatScreen
+from tui.screens.edit import EditItemScreen
 
 SEV_COLORS = {
     "critical": "red",
@@ -48,30 +52,73 @@ def _sev_color(sev: str) -> str:
     return SEV_COLORS.get((sev or "unknown").lower(), "grey")
 
 
-def _vuln_item(v) -> str:
+def _vuln_group_item(v, fixes) -> str:
     sev = (v[3] or "unknown").lower()
+    color = _sev_color(sev)
     lines = [
-        f"[bold {_sev_color(sev)}]{_sev_label(sev)}[/]  [bold]{_esc(v[2])}[/]",
+        f"[bold {color}]▌ {_sev_label(sev)}[/] [bold]{_esc(v[2])}[/]",
         f"[dim]{i18n.t('session.port')}: {_esc(v[4])}    {i18n.t('session.service')}: {_esc(v[5])}[/]",
-        _esc(v[6]),
     ]
+    if v[6]:
+        lines.append(_esc(v[6]))
+    if fixes:
+        lines.append(f"[bold {color}]▸ {i18n.t('session.tab.fixes')}[/]")
+        for f in fixes:
+            lines.append(f"    • {_esc(f)}")
+    if len(v) > 7 and v[7]:
+        lines.append(f"[bold {color}]▸ {i18n.t('session.attack')}[/]")
+        lines.append(_esc(v[7]))
     return "\n".join(x for x in lines if str(x).strip())
 
 
-def _fix_item(f) -> str:
-    return f"[dim]{i18n.t('session.vuln_id')} #{_esc(f[2])}[/]\n{_esc(f[3])}"
+def _attack_commands(attack_text: str) -> str:
+    """Extrait les commandes d'un bloc ATTACK pour l'éditeur."""
+    cmds = []
+    in_cmds = False
+    for line in str(attack_text or "").splitlines():
+        s = line.strip()
+        if s.startswith("ATTACK_CMDS:"):
+            in_cmds = True
+            continue
+        if not in_cmds:
+            continue
+        if not s:
+            continue
+        if s.startswith(("ATTACK:", "VULN:", "EXPLOIT:", "RISK_LEVEL:", "SUMMARY:")):
+            break
+        cmds.append(s)
+    return "\n".join(cmds)
 
 
-def _exploit_item(e) -> str:
-    lines = [
-        f"[bold]{_esc(e[2])}[/]  [dim]({_esc(e[3])})[/]",
-        f"[dim]{i18n.t('session.result')}: {_esc(e[5])}[/]",
-    ]
-    if e[4]:
-        lines.append(f"[dim]{i18n.t('session.payload')}:[/] {_esc(e[4])}")
-    if e[6]:
-        lines.append(f"[dim]{i18n.t('session.notes')}:[/] {_esc(e[6])}")
-    return "\n".join(lines)
+def _colorize_analysis(text: str) -> str:
+    """Colore les lignes de l'analyse IA (sévérités, risque, en-têtes)."""
+    out = []
+    for line in str(text or "").splitlines():
+        esc = _esc(line)
+        up = line.strip().upper()
+        colored = False
+        for sev, color in SEV_COLORS.items():
+            if f"SEVERITY: {sev.upper()}" in up or f"SEVERITY:{sev.upper()}" in up:
+                out.append(f"[bold {color}]{esc}[/]")
+                colored = True
+                break
+        if colored:
+            continue
+        if up.startswith("RISK_LEVEL:"):
+            for sev, color in SEV_COLORS.items():
+                if sev.upper() in up:
+                    out.append(f"[bold {color}]{esc}[/]")
+                    colored = True
+                    break
+        if colored:
+            continue
+        if up.startswith(("VULN:", "EXPLOIT:", "ATTACK:", "ATTACK_CMDS:")):
+            out.append(f"[bold cyan]{esc}[/]")
+        elif up.startswith(("DESC:", "FIX:", "RESULT:", "NOTES:")):
+            out.append(f"[dim]{esc}[/]")
+        else:
+            out.append(esc)
+    return "\n".join(out)
 
 
 class SessionDetailScreen(Screen):
@@ -80,6 +127,8 @@ class SessionDetailScreen(Screen):
         Binding("q", "app.pop_screen", description=i18n.t("binding.back"), id="binding.back", show=True),
         Binding("e", "export", description=i18n.t("binding.export"), id="binding.export", show=True),
         Binding("r", "rerun", description=i18n.t("binding.rerun"), id="binding.rerun", show=True),
+        Binding("a", "attack", description=i18n.t("binding.attack"), id="binding.attack", show=False),
+        Binding("x", "edit", description=i18n.t("binding.edit"), id="binding.edit", show=True),
         Binding("d", "delete", description=i18n.t("binding.delete"), id="binding.delete", show=True),
     ]
 
@@ -95,7 +144,7 @@ class SessionDetailScreen(Screen):
         self.data = None
         self.target = ""
         self._vulns = []
-        self._fixes = []
+        self._fixes_by_vuln = {}
         self._exploits = []
 
     def compose(self) -> ComposeResult:
@@ -103,21 +152,47 @@ class SessionDetailScreen(Screen):
         yield Static("", id="session-header")
         with TabbedContent(
             i18n.t("session.tab.vulns"),
-            i18n.t("session.tab.fixes"),
             i18n.t("session.tab.exploits"),
             i18n.t("session.tab.analysis"),
         ):
             yield ListView(id="vulns-list")
-            yield ListView(id="fixes-list")
             yield ListView(id="exploits-list")
-            yield VerticalScroll(Static("", id="analysis-text", markup=False))
+            yield VerticalScroll(Static("", id="analysis-text"))
         yield Footer()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         i18n.localize_bindings(self)
-        self._load()
+        await self._load()
 
-    def _load(self) -> None:
+    def on_tabbed_content_tab_activated(self, event) -> None:
+        """Donne le focus à la liste du nouvel onglet (navigation clavier)."""
+        try:
+            pane = event.tabbed_content.active_pane
+            for w in pane.query(ListView):
+                w.focus()
+                break
+        except Exception:
+            pass
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        self._update_attack_binding()
+
+    def _update_attack_binding(self) -> None:
+        """Affiche le raccourci « attaquer » seulement si la vuln a des commandes."""
+        show = False
+        try:
+            vl = self.query_one("#vulns-list", ListView)
+            if vl.display and vl.index is not None and vl.index < len(self._vulns):
+                v = self._vulns[vl.index]
+                show = bool((v[7] if len(v) > 7 else "") and _attack_commands(v[7]).strip())
+        except Exception:
+            pass
+        try:
+            i18n.localize_bindings(self, show_overrides={"binding.attack": show})
+        except Exception:
+            pass
+
+    async def _load(self) -> None:
         self.data = db.get_session(self.sl_no)
         if not self.data or not self.data.get("history"):
             self.app.notify("Session introuvable.", severity="error")
@@ -125,11 +200,13 @@ class SessionDetailScreen(Screen):
             return
         self.target = self.data["history"][1]
         self._vulns = self.data["vulns"]
-        self._fixes = self.data["fixes"]
         self._exploits = self.data["exploits"]
-        self._populate()
+        self._fixes_by_vuln = {}
+        for f in self.data["fixes"]:
+            self._fixes_by_vuln.setdefault(f[2], []).append(f[3])
+        await self._populate()
 
-    def _populate(self) -> None:
+    async def _populate(self) -> None:
         h = self.data["history"]
         sl, target, date, status = h[0], h[1], str(h[2]), h[3]
         header = f"[bold red]METATRON[/]  ·  [cyan]{i18n.t('session.title', sl=sl, target=target)}[/]"
@@ -139,23 +216,47 @@ class SessionDetailScreen(Screen):
         header += f"\n[dim]{i18n.t('session.select_hint')}[/]"
         self.query_one("#session-header", Static).update(header)
 
-        self._fill_list("vulns-list", "v", self._vulns, _vuln_item)
-        self._fill_list("fixes-list", "f", self._fixes, _fix_item)
-        self._fill_list("exploits-list", "e", self._exploits, _exploit_item)
+        await self._fill_vulns()
+        await self._fill_exploits()
         self._render_analysis()
+        self._update_attack_binding()
 
         if self._is_ai_error():
             self.app.notify(i18n.t("session.ai_error"), severity="warning", timeout=8)
 
-    def _fill_list(self, widget_id: str, prefix: str, rows, item_fn) -> None:
-        lst = self.query_one(f"#{widget_id}", ListView)
-        lst.remove_children()
-        if not rows:
-            lst.append(ListItem(Static(f"[dim]{i18n.t('session.none')}[/]"), id=f"{prefix}-empty"))
+    async def _fill_vulns(self) -> None:
+        lst = self.query_one("#vulns-list", ListView)
+        await lst.clear()
+        if not self._vulns:
+            lst.append(ListItem(Static(f"[dim]{i18n.t('session.none')}[/]"), id="v-empty"))
             lst.index = None
             return
-        for i, row in enumerate(rows):
-            lst.append(ListItem(Static(item_fn(row)), id=f"{prefix}-{i}"))
+        items = []
+        for i, v in enumerate(self._vulns):
+            fixes = self._fixes_by_vuln.get(v[0], [])
+            items.append(ListItem(Static(_vuln_group_item(v, fixes)), id=f"v-{i}"))
+        await lst.extend(items)
+        lst.index = 0
+
+    async def _fill_exploits(self) -> None:
+        lst = self.query_one("#exploits-list", ListView)
+        await lst.clear()
+        if not self._exploits:
+            lst.append(ListItem(Static(f"[dim]{i18n.t('session.none')}[/]"), id="e-empty"))
+            lst.index = None
+            return
+        items = []
+        for i, e in enumerate(self._exploits):
+            lines = [
+                f"[bold]{_esc(e[2])}[/]  [dim]({_esc(e[3])})[/]",
+                f"[dim]{i18n.t('session.result')}: {_esc(e[5])}[/]",
+            ]
+            if e[4]:
+                lines.append(f"[dim]{i18n.t('session.payload')}:[/] {_esc(e[4])}")
+            if e[6]:
+                lines.append(f"[dim]{i18n.t('session.notes')}:[/] {_esc(e[6])}")
+            items.append(ListItem(Static("\n".join(lines)), id=f"e-{i}"))
+        await lst.extend(items)
         lst.index = 0
 
     def _is_ai_error(self) -> bool:
@@ -174,10 +275,12 @@ class SessionDetailScreen(Screen):
             return
         risk = _sev_label(s[4])
         gen = str(s[5] or "")
-        text = str(s[3] or "")
+        text = _colorize_analysis(str(s[3] or ""))
+        risk_color = _sev_color(s[4])
         self.query_one("#analysis-text", Static).update(
-            f"{i18n.t('session.risk')} : {risk}\n"
-            f"{i18n.t('session.generated')} : {gen}\n\n{text}"
+            f"[bold]{i18n.t('session.risk')} :[/] [bold {risk_color}]{_esc(risk)}[/]\n"
+            f"[dim]{i18n.t('session.generated')} : {_esc(gen)}[/]\n\n"
+            f"{text}"
         )
 
     # ── Sélection d'un item → chat IA ──
@@ -187,16 +290,18 @@ class SessionDetailScreen(Screen):
             return
         prefix, idx = iid.split("-", 1)
         if prefix == "v":
-            ctx = self._chat_context("vulnerability", self._vulns[int(idx)])
-        elif prefix == "f":
-            ctx = self._chat_context("fix", self._fixes[int(idx)])
+            v = self._vulns[int(idx)]
+            ctx = self._chat_context("vulnerability", v, self._fixes_by_vuln.get(v[0], []))
+            chat_key = f"vuln:{self.sl_no}:{v[0]}"
         elif prefix == "e":
-            ctx = self._chat_context("exploit", self._exploits[int(idx)])
+            e = self._exploits[int(idx)]
+            ctx = self._chat_context("exploit", e, [])
+            chat_key = f"exploit:{self.sl_no}:{e[0]}"
         else:
             return
-        self.app.push_screen(ChatScreen(self.target, ctx))
+        self.app.push_screen(ChatScreen(self.target, ctx, chat_key))
 
-    def _chat_context(self, kind: str, row) -> str:
+    def _chat_context(self, kind: str, row, fixes) -> str:
         parts = [f"[{kind}]"]
         if kind == "vulnerability":
             parts.append(f"Nom : {row[2]}")
@@ -204,9 +309,10 @@ class SessionDetailScreen(Screen):
             parts.append(f"Port : {row[4]} | Service : {row[5]}")
             if row[6]:
                 parts.append(f"Description : {row[6]}")
-        elif kind == "fix":
-            parts.append(f"Correctif lié à la vulnérabilité #{row[2]}")
-            parts.append(f"Contenu : {row[3]}")
+            if fixes:
+                parts.append("Correctifs :\n" + "\n".join(f"- {f}" for f in fixes))
+            if len(row) > 7 and row[7]:
+                parts.append(f"Attaque :\n{row[7]}")
         else:
             parts.append(f"Nom : {row[2]}")
             parts.append(f"Outil : {row[3]}")
@@ -222,6 +328,44 @@ class SessionDetailScreen(Screen):
             if raw:
                 parts.append("Données de scan (extrait) :\n" + raw[:2000])
         return "\n\n".join(parts)
+
+    # ── Test d'attaque ──
+    def action_attack(self) -> None:
+        lst = self.query_one("#vulns-list", ListView)
+        idx = lst.index
+        if idx is None or idx >= len(self._vulns):
+            self.app.notify(i18n.t("attack.no_commands"), severity="warning")
+            return
+        v = self._vulns[idx]
+        attack = v[7] if len(v) > 7 else ""
+        cmds = _attack_commands(attack)
+        if not cmds.strip():
+            self.app.notify(i18n.t("attack.no_commands"), severity="warning")
+            return
+        self.app.push_screen(AttackScreen(self.target, cmds))
+
+    # ── Édition / suppression d'un élément ──
+    def action_edit(self) -> None:
+        vl = self.query_one("#vulns-list", ListView)
+        el = self.query_one("#exploits-list", ListView)
+        if vl.display and vl.index is not None and vl.index < len(self._vulns):
+            v = self._vulns[vl.index]
+            fixes = [f for f in self.data["fixes"] if f[2] == v[0]]
+            self.app.push_screen(
+                EditItemScreen("vuln", self.sl_no, v, fixes),
+                callback=self._on_edit_done,
+            )
+        elif el.display and el.index is not None and el.index < len(self._exploits):
+            e = self._exploits[el.index]
+            self.app.push_screen(
+                EditItemScreen("exploit", self.sl_no, e),
+                callback=self._on_edit_done,
+            )
+        else:
+            self.app.notify(i18n.t("session.none"), severity="warning")
+
+    def _on_edit_done(self, _) -> None:
+        self.call_after_refresh(self._load)
 
     # ── Actions ──
     def action_export(self) -> None:
@@ -283,7 +427,79 @@ class SessionDetailScreen(Screen):
 
     def _on_rerun_done(self, ok: bool) -> None:
         if ok:
-            self._load()
+            self.call_after_refresh(self._load)
+
+
+class AttackScreen(Screen):
+    """Éditeur de commandes d'attaque + exécution."""
+
+    BINDINGS = [
+        Binding("escape", "app.pop_screen", description=i18n.t("binding.back"), id="binding.back", show=True),
+        Binding("ctrl+s", "run", description=i18n.t("binding.run"), id="binding.run", show=True),
+    ]
+
+    class Line(Message):
+        def __init__(self, line: str) -> None:
+            self.line = line
+            super().__init__()
+
+    class Done(Message):
+        def __init__(self) -> None:
+            super().__init__()
+
+    def __init__(self, target: str, commands_text: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.target = target
+        self.commands_text = commands_text
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        yield Static(
+            f"[bold red]METATRON[/]  ·  [cyan]{i18n.t('attack.title')}[/]  ·  [dim]{self.target}[/]",
+            id="attack-title",
+        )
+        yield Static(f"[yellow]{i18n.t('attack.warning')}[/]", id="attack-warning")
+        yield TextArea(self.commands_text, id="attack-editor", language="bash")
+        yield Static(i18n.t("attack.hint"), id="attack-hint")
+        yield Log(id="attack-log")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        i18n.localize_bindings(self)
+
+    def action_run(self) -> None:
+        cmds_text = self.query_one("#attack-editor", TextArea).text
+        self.query_one("#attack-log", Log).clear()
+        self._run_worker(cmds_text)
+
+    @work(thread=True)
+    def _run_worker(self, cmds_text: str) -> None:
+        cmds = [l for l in cmds_text.splitlines() if l.strip() and not l.strip().startswith("#")]
+        if not cmds:
+            self.post_message(self.Line(i18n.t("attack.no_commands")))
+            self.post_message(self.Done())
+            return
+        for cmd in cmds:
+            self.post_message(self.Line(f"$ {cmd}"))
+            try:
+                r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+                out = (r.stdout or "").strip()
+                err = (r.stderr or "").strip()
+                for l in out.splitlines():
+                    self.post_message(self.Line(l))
+                for l in err.splitlines():
+                    self.post_message(self.Line(l))
+            except subprocess.TimeoutExpired:
+                self.post_message(self.Line("[!] timeout"))
+            except Exception as e:
+                self.post_message(self.Line(f"[!] {e}"))
+        self.post_message(self.Done())
+
+    def on_attack_screen_line(self, event: Line) -> None:
+        self.query_one("#attack-log", Log).write_line(event.line)
+
+    def on_attack_screen_done(self, event: Done) -> None:
+        self.app.notify(i18n.t("attack.done"))
 
 
 class ExportScreen(ModalScreen):
@@ -345,7 +561,7 @@ class RunAnalysisScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
         yield Static(f"[bold red]METATRON[/]  ·  [cyan]{i18n.t('rerun.title')}[/]", id="run-title")
-        yield VerticalScroll(Static("", id="run-log", markup=False))
+        yield VerticalScroll(Static("", id="run-log-static", markup=False))
         yield Footer()
 
     def on_mount(self) -> None:
@@ -356,6 +572,7 @@ class RunAnalysisScreen(Screen):
     def _run_worker(self) -> None:
         logs.set_log(lambda m: self.post_message(self.LogLine(logs.strip_ansi(m))))
         try:
+            self.post_message(self.LogLine(i18n.t("scan.tours.explain")))
             result = llm.analyse_target(self.target, self.raw_scan)
             self._save(result)
             self.post_message(self.Done(True, result.get("risk_level", "UNKNOWN")))
@@ -396,7 +613,7 @@ class RunAnalysisScreen(Screen):
 
     def on_run_analysis_screen_log_line(self, event: LogLine) -> None:
         self._lines.append(event.line)
-        self.query_one("#run-log", Static).update("\n".join(self._lines[-60:]))
+        self.query_one("#run-log-static", Static).update("\n".join(self._lines[-60:]))
 
     def on_run_analysis_screen_done(self, event: Done) -> None:
         if event.ok:

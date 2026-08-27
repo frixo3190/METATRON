@@ -1,16 +1,24 @@
-"""Écran de chat IA — split view : gauche = conversation, droite = contexte."""
+"""Écran de chat IA — split view : gauche = conversation, droite = contexte.
+
+La discussion est persistée en base (chat_key) et rechargée à l'ouverture.
+"""
 
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, Log, Static
+from textual.widgets import Footer, Header, Input, RichLog, Static
 from textual import work
 
+import db
 import llm
 import logs
 from tui import i18n
+
+
+def _esc(s) -> str:
+    return str(s or "").replace("[", "\\[").replace("]", "\\]")
 
 
 class ChatScreen(Screen):
@@ -26,10 +34,11 @@ class ChatScreen(Screen):
             self.text = text
             super().__init__()
 
-    def __init__(self, target: str, context_text: str, **kwargs) -> None:
+    def __init__(self, target: str, context_text: str, chat_key: str = "", **kwargs) -> None:
         super().__init__(**kwargs)
         self.target = target
         self.context_text = context_text
+        self.chat_key = chat_key
         self._history = []  # liste de dicts {"role", "content"}
 
     def compose(self) -> ComposeResult:
@@ -40,7 +49,7 @@ class ChatScreen(Screen):
                     f"[bold red]METATRON[/]  ·  [cyan]{i18n.t('chat.title')}[/]",
                     id="chat-title",
                 )
-                yield Log(id="chat-log")
+                yield RichLog(id="chat-log", markup=True, wrap=True)
                 yield Input(placeholder=i18n.t("chat.input.placeholder"), id="chat-input")
             with VerticalScroll(id="chat-right"):
                 yield Static(f"[bold]{i18n.t('chat.context.title')}[/]", id="chat-context-title")
@@ -49,19 +58,32 @@ class ChatScreen(Screen):
 
     def on_mount(self) -> None:
         i18n.localize_bindings(self)
-        self.query_one("#chat-log", Log).write_line(
-            f"[{i18n.t('chat.ai')}] Pose-moi tes questions sur cette cible et ce résultat."
-        )
+        self._log = self.query_one("#chat-log", RichLog)
+        # Recharge la discussion persistée (si chat_key fourni)
+        if self.chat_key:
+            for role, content in db.get_chat_messages(self.chat_key):
+                self._history.append({"role": role, "content": content})
+                self._render_message(role, content)
+        if not self._history:
+            self._log.write(f"[dim]{i18n.t('chat.welcome')}[/]")
         self.query_one("#chat-input", Input).focus()
+
+    def _render_message(self, role: str, content: str) -> None:
+        if role == "user":
+            self._log.write(f"[bold cyan]{i18n.t('chat.you')} :[/] [cyan]{_esc(content)}[/]")
+        else:
+            self._log.write(f"[bold green]{i18n.t('chat.ai')} :[/] {_esc(content)}")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         q = event.value.strip()
         if not q:
             return
         self.query_one("#chat-input", Input).value = ""
-        self.query_one("#chat-log", Log).write_line(f"[{i18n.t('chat.you')}] {q}")
+        self._render_message("user", q)
         self._history.append({"role": "user", "content": q})
-        self.query_one("#chat-log", Log).write_line(f"[{i18n.t('chat.ai')}] {i18n.t('chat.thinking')}")
+        if self.chat_key:
+            db.save_chat_message(self.chat_key, "user", q)
+        self._log.write(f"[dim]{i18n.t('chat.ai')} · {i18n.t('chat.thinking')}[/]")
         self._ask_worker(q)
 
     @work(thread=True)
@@ -72,6 +94,8 @@ class ChatScreen(Screen):
             messages.extend(self._history)
             resp = llm.ask_llm(messages, max_tokens=1200)
             self._history.append({"role": "assistant", "content": resp})
+            if self.chat_key:
+                db.save_chat_message(self.chat_key, "assistant", resp)
             self.post_message(self.Reply(resp))
         finally:
             logs.set_log(None)
@@ -88,4 +112,4 @@ class ChatScreen(Screen):
         )
 
     def on_chat_screen_reply(self, event: Reply) -> None:
-        self.query_one("#chat-log", Log).write_line(f"[{i18n.t('chat.ai')}] {event.text}")
+        self._render_message("assistant", event.text)

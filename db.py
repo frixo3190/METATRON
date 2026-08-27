@@ -14,6 +14,7 @@ from datetime import datetime
 # ─────────────────────────────────────────────
 
 _ATTACK_COLUMN_CHECKED = False
+_CHAT_TABLE_CHECKED = False
 
 
 def _ensure_attack_column(conn) -> None:
@@ -33,6 +34,29 @@ def _ensure_attack_column(conn) -> None:
         _ATTACK_COLUMN_CHECKED = True
 
 
+def _ensure_chat_table(conn) -> None:
+    """Crée la table `chat_messages` si absente (migration)."""
+    global _CHAT_TABLE_CHECKED
+    if _CHAT_TABLE_CHECKED:
+        return
+    try:
+        c = conn.cursor()
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id         INT AUTO_INCREMENT PRIMARY KEY,
+                chat_key   VARCHAR(255),
+                role       VARCHAR(20),
+                content    TEXT,
+                created_at DATETIME
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        _CHAT_TABLE_CHECKED = True
+
+
 def get_connection():
     """Returns a MariaDB connection. No password (local setup)."""
     conn = mysql.connector.connect(
@@ -42,6 +66,7 @@ def get_connection():
         database="metatron"
     )
     _ensure_attack_column(conn)
+    _ensure_chat_table(conn)
     return conn
 
 
@@ -212,12 +237,42 @@ def get_exploits(sl_no: int):
 
 
 # ─────────────────────────────────────────────
+# CHAT (discussion IA persistée)
+# ─────────────────────────────────────────────
+
+def save_chat_message(chat_key: str, role: str, content: str):
+    """Enregistre un message de discussion."""
+    conn = get_connection()
+    c = conn.cursor()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute(
+        "INSERT INTO chat_messages (chat_key, role, content, created_at) VALUES (%s, %s, %s, %s)",
+        (chat_key, role, content, now)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_chat_messages(chat_key: str):
+    """Retourne les messages d'une discussion, dans l'ordre."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT role, content FROM chat_messages WHERE chat_key = %s ORDER BY id ASC",
+        (chat_key,)
+    )
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+# ─────────────────────────────────────────────
 # EDIT FUNCTIONS
 # ─────────────────────────────────────────────
 
 def edit_vulnerability(vuln_id: int, field: str, value: str):
     """Edit a single field in vulnerabilities by id."""
-    allowed = {"vuln_name", "severity", "port", "service", "description"}
+    allowed = {"vuln_name", "severity", "port", "service", "description", "attack"}
     if field not in allowed:
         print(f"[!] Invalid field: {field}. Allowed: {allowed}")
         return

@@ -284,6 +284,7 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
   port        VARCHAR(20),
   service     VARCHAR(100),
   description TEXT,
+  attack      TEXT,
   FOREIGN KEY (sl_no) REFERENCES history(sl_no)
 );
 
@@ -316,6 +317,14 @@ CREATE TABLE IF NOT EXISTS summary (
   risk_level   VARCHAR(50),
   generated_at DATETIME,
   FOREIGN KEY (sl_no) REFERENCES history(sl_no)
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  chat_key   VARCHAR(255),
+  role       VARCHAR(20),
+  content    TEXT,
+  created_at DATETIME
 );
 SQL
         ok "Base, utilisateur et tables créés (ou déjà présents)"

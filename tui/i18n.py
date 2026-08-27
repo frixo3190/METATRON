@@ -201,9 +201,10 @@ STRINGS = {
     "session.payload": {"fr": "Payload", "en": "Payload"},
     "session.notes": {"fr": "Notes", "en": "Notes"},
     "session.vuln_id": {"fr": "Vulnérabilité", "en": "Vulnerability"},
+    "session.attack": {"fr": "Attaque", "en": "Attack"},
     "session.select_hint": {
-        "fr": "Entrée = discuter avec l'IA · Échap = retour",
-        "en": "Enter = chat with AI · Esc = back",
+        "fr": "Entrée = discuter avec l'IA · A = tester l'attaque · Échap = retour",
+        "en": "Enter = chat with AI · A = test attack · Esc = back",
     },
     # Chat IA
     "chat.title": {"fr": "Discussion IA", "en": "AI chat"},
@@ -215,6 +216,109 @@ STRINGS = {
     "chat.thinking": {"fr": "Réflexion…", "en": "Thinking…"},
     "chat.you": {"fr": "Toi", "en": "You"},
     "chat.ai": {"fr": "Metatron", "en": "Metatron"},
+    "chat.welcome": {
+        "fr": "Pose-moi tes questions sur cette cible et ce résultat.",
+        "en": "Ask me your questions about this target and result.",
+    },
+    # Test d'attaque
+    "attack.title": {"fr": "Tester l'attaque", "en": "Test the attack"},
+    "attack.hint": {
+        "fr": "Éditez les commandes puis Ctrl+S pour lancer · Échap pour annuler",
+        "en": "Edit commands then Ctrl+S to run · Esc to cancel",
+    },
+    "attack.warning": {
+        "fr": "Ces commandes vont s'exécuter sur VOTRE machine. Vérifiez-les !",
+        "en": "These commands will run on YOUR machine. Review them!",
+    },
+    "attack.no_commands": {
+        "fr": "Aucune commande d'attaque disponible.",
+        "en": "No attack commands available.",
+    },
+    "attack.done": {"fr": "Attaque terminée.", "en": "Attack finished."},
+    "attack.failed": {"fr": "Échec de l'attaque.", "en": "Attack failed."},
+    "binding.attack": {"fr": "Attaquer", "en": "Attack"},
+    "binding.run": {"fr": "Lancer", "en": "Run"},
+    "binding.scan_run": {"fr": "Lancer", "en": "Run"},
+    "binding.chat": {"fr": "Discuter", "en": "Chat"},
+    "binding.session": {"fr": "Session", "en": "Session"},
+    # Nouveau scan
+    "scan.title": {"fr": "Nouveau scan", "en": "New scan"},
+    "scan.target.placeholder": {"fr": "Cible (IP ou domaine)…", "en": "Target (IP or domain)…"},
+    "scan.tools": {"fr": "Outils de recon", "en": "Recon tools"},
+    "scan.hint": {
+        "fr": "Entrée = lancer · Espace = cocher · Échap = retour",
+        "en": "Enter = run · Space = check · Esc = back",
+    },
+    "scan.no_target": {"fr": "Saisis une cible.", "en": "Enter a target."},
+    "scan.no_tools": {
+        "fr": "Sélectionne au moins un outil.",
+        "en": "Select at least one tool.",
+    },
+    "scan.done": {
+        "fr": "Scan terminé — SL# {sl} | Risque : {risk}",
+        "en": "Scan done — SL# {sl} | Risk: {risk}",
+    },
+    "scan.analyzing": {"fr": "Analyse IA en cours…", "en": "AI analysis running…"},
+    "scan.tours.explain": {
+        "fr": "« Tours » = l'IA analyse les données, lance des outils supplémentaires si besoin, puis re-analyse avec les nouveaux résultats. Chaque itération est un tour.",
+        "en": "\"Rounds\" = the AI analyzes the data, launches extra tools if needed, then re-analyzes with the new results. Each iteration is a round.",
+    },
+    "scan.running": {"fr": "Scan en cours", "en": "Scan running"},
+    "scan.finished": {
+        "fr": "Scan terminé — c = discuter · s = session · échap = retour",
+        "en": "Scan done — c = chat · s = session · esc = back",
+    },
+    "scan.not_done": {
+        "fr": "Le scan n'est pas encore terminé.",
+        "en": "The scan is not finished yet.",
+    },
+    # Descriptions des outils de recon
+    "tool.nmap": {
+        "fr": "Nmap — ports ouverts + versions des services",
+        "en": "Nmap — open ports + service versions",
+    },
+    "tool.whois": {
+        "fr": "Whois — propriétaire du domaine, registrar, IP",
+        "en": "Whois — domain owner, registrar, IP",
+    },
+    "tool.whatweb": {
+        "fr": "WhatWeb — CMS, frameworks, technologies web",
+        "en": "WhatWeb — CMS, frameworks, web tech",
+    },
+    "tool.curl": {
+        "fr": "Curl — en-têtes HTTP, serveur, cookies, sécurité",
+        "en": "Curl — HTTP headers, server, cookies, security",
+    },
+    "tool.dig": {
+        "fr": "Dig — enregistrements DNS (A, MX, NS, TXT)",
+        "en": "Dig — DNS records (A, MX, NS, TXT)",
+    },
+    "tool.nikto": {
+        "fr": "Nikto — vulnérabilités serveur web, fichiers sensibles",
+        "en": "Nikto — web server vulns, sensitive files",
+    },
+    # Édition / suppression
+    "binding.edit": {"fr": "Éditer", "en": "Edit"},
+    "edit.title.vuln": {"fr": "Éditer la vulnérabilité", "en": "Edit vulnerability"},
+    "edit.title.exploit": {"fr": "Éditer l'exploit", "en": "Edit exploit"},
+    "edit.title.fix": {"fr": "Éditer le correctif", "en": "Edit fix"},
+    "edit.field.name": {"fr": "Nom", "en": "Name"},
+    "edit.field.severity": {"fr": "Sévérité", "en": "Severity"},
+    "edit.field.port": {"fr": "Port", "en": "Port"},
+    "edit.field.service": {"fr": "Service", "en": "Service"},
+    "edit.field.description": {"fr": "Description", "en": "Description"},
+    "edit.field.attack": {"fr": "Attaque", "en": "Attack"},
+    "edit.field.tool": {"fr": "Outil", "en": "Tool"},
+    "edit.field.payload": {"fr": "Payload", "en": "Payload"},
+    "edit.field.result": {"fr": "Résultat", "en": "Result"},
+    "edit.field.notes": {"fr": "Notes", "en": "Notes"},
+    "edit.value.prompt": {"fr": "Nouvelle valeur", "en": "New value"},
+    "edit.fixes": {"fr": "Correctifs", "en": "Fixes"},
+    "edit.delete.vuln": {"fr": "Supprimer la vulnérabilité", "en": "Delete vulnerability"},
+    "edit.delete.exploit": {"fr": "Supprimer l'exploit", "en": "Delete exploit"},
+    "edit.delete.fix": {"fr": "Supprimer ce correctif", "en": "Delete this fix"},
+    "edit.confirm.delete": {"fr": "Supprimer « {t} » ?", "en": "Delete \"{t}\"?"},
+    "edit.done": {"fr": "Modifié.", "en": "Updated."},
 }
 
 DEFAULT_LANG = "en"
@@ -240,18 +344,24 @@ def lang_name(code: str) -> str:
     return t(f"lang.{code}" if code in ("fr", "en") else "lang.en")
 
 
-def localize_bindings(node) -> None:
-    """Traduit les descriptions des raccourcis d'un écran (footer)."""
+def localize_bindings(node, show_overrides=None) -> None:
+    """Traduit les descriptions des raccourcis d'un écran (footer).
+
+    `show_overrides` : dict {binding_id: bool} pour forcer la visibilité
+    de certains raccourcis (ex: masquer « attaquer » si pas de commandes).
+    """
     from textual.binding import Binding, BindingsMap
 
+    show_overrides = show_overrides or {}
     keys = {}
     for b in getattr(node, "BINDINGS", []):
         desc = t(b.id) if b.id else b.description
+        show = show_overrides.get(b.id, b.show)
         nb = Binding(
             b.key,
             b.action,
             description=desc,
-            show=b.show,
+            show=show,
             key_display=b.key_display,
             priority=b.priority,
             id=b.id,

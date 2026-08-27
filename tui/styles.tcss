@@ -14,22 +14,12 @@ Footer {
     background: $panel;
 }
 
-#banner {
-    text-align: center;
-    padding: 1 2;
-    margin: 1 2;
-    border: heavy $error;
-    background: $panel;
+/* Sélecteur de liste en rouge (comme l'en-tête METATRON) */
+ListView ListItem.--highlight {
+    background: $error 40%;
+    color: $text;
 }
 
-#menu {
-    margin: 1 2;
-    height: auto;
-    max-height: 16;
-    border: round $primary;
-    background: $panel;
-    width: 60;
-}
 #menu ListItem {
     padding: 0 1;
 }
@@ -160,11 +150,18 @@ Footer {
 }
 
 #run-log {
+    padding: 0 1;
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+    height: 1fr;
+}
+
+#run-log-static {
     padding: 1;
     margin: 1 2;
     border: round $primary;
     background: $panel;
-    min-height: 10;
 }
 
 /* ── Modals ── */
@@ -189,26 +186,52 @@ Footer {
 
 /* ── Accueil (menu + bannière METATRON) ── */
 #menu-root {
-    align: center middle;
+    width: 100%;
     height: auto;
 }
 
 #angel {
     height: auto;
-    width: auto;
+    width: 100%;
     color: $error;
     text-align: center;
-    content-align: center middle;
+    padding: 1 0;
+    background: $panel;
+    border-bottom: heavy $error;
+}
+
+#banner {
+    text-align: center;
+    padding: 1 2;
+    margin: 1 2;
+    background: $panel;
+    width: 100%;
+}
+
+#menu {
+    margin: 1 2;
+    height: auto;
+    max-height: 16;
+    border: round $primary;
+    background: $panel;
+    width: 100%;
 }
 
 /* ── Session : listes d'items (texte qui retourne à la ligne) ── */
 #vulns-list, #fixes-list, #exploits-list {
     background: $panel;
-    padding: 1;
+    padding: 0 1;
 }
 
 #vulns-list ListItem, #fixes-list ListItem, #exploits-list ListItem {
-    padding: 0;
+    padding: 1 2;
+    margin: 1 0;
+    border-bottom: solid $primary 25%;
+    height: auto;
+}
+
+#vulns-list ListItem:last-of-type, #exploits-list ListItem:last-of-type {
+    border-bottom: none;
 }
 
 /* ── Chat IA (split view) ── */
@@ -243,4 +266,98 @@ Footer {
 #chat-context {
     padding: 1;
     margin: 1;
+}
+
+/* ── Test d'attaque ── */
+#attack-title, #attack-warning, #attack-hint {
+    padding: 0 2;
+    margin: 1 2;
+}
+
+#attack-editor {
+    height: 12;
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+}
+
+#attack-log {
+    height: 1fr;
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+    padding: 0 1;
+}
+
+/* ── Nouveau scan ── */
+#scan-title {
+    padding: 1 2;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#scan-target {
+    margin: 0 2 1 2;
+}
+
+#scan-tools-label, #scan-hint {
+    padding: 0 2;
+    margin: 0 2;
+}
+
+#scan-tools {
+    margin: 0 2 1 2;
+    height: auto;
+    max-height: 10;
+    border: round $primary;
+    background: $panel;
+}
+
+#scan-log {
+    height: 1fr;
+    margin: 0 2 1 2;
+    border: round $primary;
+    background: $panel;
+    padding: 0 1;
+}
+
+/* ── Édition / suppression ── */
+#edit-header {
+    padding: 1 2;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#edit-list {
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+}
+
+#textedit-dialog, #sev-dialog, #fix-dialog {
+    width: 70;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    border: thick $error;
+    background: $panel;
+}
+
+#textedit-title, #sev-title, #fix-title {
+    text-align: center;
+    padding: 1;
+}
+
+#textedit-input {
+    margin: 1 0;
+}
+
+#fix-text {
+    padding: 1;
+    margin: 1 0;
+    border: round $primary;
+    background: $panel;
+    max-height: 10;
 }

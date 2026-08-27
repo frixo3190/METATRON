@@ -9,7 +9,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 from tui import i18n
 from tui.angel import angel_frame
 from tui.screens.history import HistoryScreen
-from tui.screens.placeholder import PlaceholderScreen
+from tui.screens.scan import NewScanScreen
 from tui.screens.settings import SettingsScreen
 
 
@@ -81,9 +81,7 @@ class MainMenuScreen(Screen):
 
     def _go(self, item_id: str) -> None:
         if item_id == "m-scan":
-            self.app.push_screen(
-                PlaceholderScreen("Nouveau scan", "Phase 4 — à venir.")
-            )
+            self.app.push_screen(NewScanScreen())
         elif item_id == "m-history":
             self.app.push_screen(HistoryScreen())
         elif item_id == "m-settings":

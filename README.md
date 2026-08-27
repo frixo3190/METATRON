@@ -29,15 +29,18 @@ The AI backend is **configurable** from the CLI: use a **local Ollama** model (f
 
 ## ✨ Features
 
+- 🖥️ **Modern TUI** — Textual full-screen interface (menus, tableaux, onglets, chat)
 - 🤖 **Dual AI backend** — local `metatron-qwen` via Ollama (offline) **or** OpenRouter (cloud)
-- ⚙️ **CLI settings** — switch provider, set/edit OpenRouter API key, pick model (cost shown), view remaining credits
+- ⚙️ **CLI/TUI settings** — switch provider, set/edit OpenRouter API key, pick model (cost shown), view remaining credits, language (fr/en)
 - 🔍 **Automated Recon** — nmap, whois, whatweb, curl headers, dig DNS, nikto
 - 🌐 **Web Search** — DuckDuckGo search + CVE lookup (no API key needed)
-- 🗄️ **MariaDB Backend** — full scan history with 5 linked tables
-- ✏️ **Edit / Delete** — modify any saved result directly from the CLI
+- 🗄️ **MariaDB Backend** — full scan history (vulns, fixes, exploits, summary, chat)
+- 💬 **AI Chat** — discuss any vulnerability/exploit with the AI (context-aware, persisted)
+- ⚔️ **Attack blocks** — the AI generates a Kali attack procedure (commands); test it (editable) from the history
+- ✏️ **Edit / Delete** — modify or delete any result directly
 - 🔁 **Agentic Loop** — AI can request more tool runs mid-analysis
 - 🛠️ **Self-audit installer** — `install_audit.sh` checks everything and proposes fixes
-- 📤 Export Reports
+- 📤 **Export Reports** — PDF / HTML
 
 Metatron allows you to export scan results into clean, shareable report formats by selecting '2.view history'->select slno and export
 
@@ -289,6 +292,13 @@ CREATE TABLE summary (
 
 ## 🚀 Usage
 
+Metatron now launches a **modern Textual TUI** by default. The legacy line-by-line CLI is still available with `--legacy`.
+
+```bash
+./venv/bin/python metatron.py          # interface TUI (moderne)
+./venv/bin/python metatron.py --legacy # ancienne interface
+```
+
 Metatron needs **two terminal tabs** to run **only if you use Ollama**. With OpenRouter, a single tab is enough.
 
 ### Terminal 1 (Ollama only) — Load the AI model
@@ -303,48 +313,26 @@ Wait until you see the `>>>` prompt. This means the model is loaded into memory 
 
 ```bash
 cd ~/METATRON
-source venv/bin/activate
-python metatron.py
+./venv/bin/python metatron.py
 ```
 
 ---
 
-### Walkthrough
+### Walkthrough (TUI)
 
-**1. Main menu appears:**
-```
-  [1]  New Scan
-  [2]  View History
-  [3]  Settings (IA)
-  [4]  Exit
-```
+**1. Main menu** — `1` Nouveau scan · `2` Historique · `3` Paramètres · `q` Quitter.
 
-**2. Select [1] New Scan → enter your target:**
-```
-[?] Enter target IP or domain: 192.168.1.1
-```
-or
-```
-[?] Enter target IP or domain: example.com
-```
+**2. `1` Nouveau scan** — entre la cible, coche les outils (nmap, whois, whatweb, curl, dig, nikto — chacun avec sa description), `Entrée` pour lancer. Recon + analyse IA en direct, puis ouverture de la session.
 
-**3. Select recon tools to run:**
-```
-  [1] nmap
-  [2] whois
-  [3] whatweb
-  [4] curl headers
-  [5] dig DNS
-  [6] nikto
-  [a] Run all (except nikto)
-  [n] Run all + nikto (slow)
-```
+**3. Historique** — `2` : liste des scans (cible, date, statut, outils lancés). `Entrée` pour ouvrir une session.
 
-**4. Metatron runs the tools, feeds results to the AI, and prints the analysis.**
-
-**5. Everything is saved to MariaDB automatically.**
-
-**6. After the scan you can edit or delete any result.**
+**4. Session** — onglets Vulnérabilités / Exploits / Analyse. Chaque vulnérabilité est **groupée avec sa description et ses correctifs**, colorée selon la sévérité. Raccourcis :
+   - `Entrée` — discuter avec l'IA (chat persisté, contexte du scan)
+   - `a` — tester le bloc d'attaque (éditable avant lancement)
+   - `x` — éditer / supprimer l'élément
+   - `e` — exporter (PDF/HTML)
+    - `r` — relancer l'analyse
+    - `d` — supprimer la session
 
 ---
 
@@ -352,20 +340,29 @@ or
 
 ```
 METATRON/
-├── metatron.py       ← main CLI entry point (+ preflight check)
-├── config.py         ← AI provider / API key / model settings
-├── install_audit.sh  ← self-audit installer (checks + optional fixes)
-├── db.py             ← MariaDB connection and all CRUD operations
-├── tools.py          ← recon tool runners (nmap, whois, etc.)
-├── llm.py            ← Ollama/OpenRouter interface + tool dispatch loop
-├── search.py         ← DuckDuckGo web search and CVE lookup
-├── export.py         ← PDF / HTML report exporter
-├── Modelfile         ← custom model config for metatron-qwen
-├── requirements.txt  ← Python dependencies
-├── .gitignore        ← excludes venv, pycache, db files
-├── LICENSE           ← MIT License
-├── README.md         ← this file
-└── screenshots/      ← terminal screenshots for documentation
+├── metatron.py         ← lanceur (TUI par défaut, --legacy)
+├── metatron_legacy.py  ← ancienne interface ligne par ligne
+├── config.py           ← AI provider / API key / model / language
+├── logs.py             ← hook de log (capturé par le TUI)
+├── install_audit.sh    ← self-audit installer (checks + optional fixes)
+├── commit_gh.sh        ← commit + push via GitHub CLI
+├── db.py               ← MariaDB connection and all CRUD operations
+├── tools.py            ← recon tool runners (nmap, whois, etc.)
+├── llm.py              ← Ollama/OpenRouter interface + parser (VULN/DESC/FIX/ATTACK)
+├── search.py           ← DuckDuckGo web search and CVE lookup
+├── export.py           ← PDF / HTML report exporter
+├── tui/                ← interface Textual
+│   ├── app.py          ← MetatronApp
+│   ├── i18n.py         ← traductions fr/en
+│   ├── angel.py        ← bannière METATRON animée
+│   ├── styles.tcss     ← thème
+│   └── screens/        ← menu, scan, history, session, settings, chat, edit
+├── Modelfile           ← custom model config for metatron-qwen
+├── requirements.txt    ← Python dependencies
+├── .gitignore          ← excludes venv, pycache, db files
+├── LICENSE             ← MIT License
+├── README.md           ← this file
+└── screenshots/        ← terminal screenshots for documentation
 ```
 
 ---
