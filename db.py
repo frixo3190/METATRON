@@ -13,14 +13,36 @@ from datetime import datetime
 # CONNECTION
 # ─────────────────────────────────────────────
 
+_ATTACK_COLUMN_CHECKED = False
+
+
+def _ensure_attack_column(conn) -> None:
+    """Ajoute la colonne `attack` à la table vulnerabilities si absente (migration)."""
+    global _ATTACK_COLUMN_CHECKED
+    if _ATTACK_COLUMN_CHECKED:
+        return
+    try:
+        c = conn.cursor()
+        c.execute("SHOW COLUMNS FROM vulnerabilities LIKE 'attack'")
+        if not c.fetchone():
+            c.execute("ALTER TABLE vulnerabilities ADD COLUMN attack TEXT")
+            conn.commit()
+    except Exception:
+        pass
+    finally:
+        _ATTACK_COLUMN_CHECKED = True
+
+
 def get_connection():
     """Returns a MariaDB connection. No password (local setup)."""
-    return mysql.connector.connect(
+    conn = mysql.connector.connect(
         host="localhost",
         user="metatron",
         password="123",
         database="metatron"
     )
+    _ensure_attack_column(conn)
+    return conn
 
 
 # ─────────────────────────────────────────────
@@ -43,14 +65,15 @@ def create_session(target: str) -> int:
 
 
 def save_vulnerability(sl_no: int, vuln_name: str, severity: str,
-                       port: str, service: str, description: str) -> int:
-    """Insert a vulnerability. Returns its id."""
+                       port: str, service: str, description: str,
+                       attack: str = "") -> int:
+    """Insert a vulnerability (with optional attack block). Returns its id."""
     conn = get_connection()
     c = conn.cursor()
     c.execute("""
-        INSERT INTO vulnerabilities (sl_no, vuln_name, severity, port, service, description)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (sl_no, vuln_name, severity, port, service, description))
+        INSERT INTO vulnerabilities (sl_no, vuln_name, severity, port, service, description, attack)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (sl_no, vuln_name, severity, port, service, description, attack))
     conn.commit()
     vuln_id = c.lastrowid
     conn.close()
@@ -110,6 +133,21 @@ def get_all_history():
     conn = get_connection()
     c = conn.cursor()
     c.execute("SELECT sl_no, target, scan_date, status FROM history ORDER BY sl_no DESC")
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def get_history_with_scans():
+    """Return history rows plus raw_scan (for tool detection), newest first."""
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("""
+        SELECT h.sl_no, h.target, h.scan_date, h.status, s.raw_scan
+        FROM history h
+        LEFT JOIN summary s ON h.sl_no = s.sl_no
+        ORDER BY h.sl_no DESC
+    """)
     rows = c.fetchall()
     conn.close()
     return rows

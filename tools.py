@@ -7,6 +7,17 @@ OS: Parrot OS (all these tools are pre-installed or easily available)
 """
 
 import subprocess
+import logs
+
+
+# ── Couleurs (affichage console uniquement) ──
+GREEN  = "\033[92m"
+CYAN   = "\033[96m"
+YELLOW = "\033[93m"
+RED    = "\033[91m"
+BOLD   = "\033[1m"
+DIM    = "\033[90m"
+RESET  = "\033[0m"
 
 
 # ─────────────────────────────────────────────
@@ -57,7 +68,7 @@ def run_nmap(target: str) -> str:
     -T4  : aggressive timing (faster)
     --open : only show open ports
     """
-    print(f"  [*] nmap -sV -sC -T4 --open {target}")
+    logs.emit(f"  {CYAN}▸ nmap{RESET} {DIM}-sV -sC -T4 --open {target}{RESET}")
     return run_tool(["nmap", "-sV", "-sC", "-T4", "--open", target], timeout=180)
 
 
@@ -65,7 +76,7 @@ def run_whois(target: str) -> str:
     """
     whois — domain registration, registrar, IP ownership info
     """
-    print(f"  [*] whois {target}")
+    logs.emit(f"  {CYAN}▸ whois{RESET} {DIM}{target}{RESET}")
     return run_tool(["whois", target], timeout=30)
 
 
@@ -74,7 +85,7 @@ def run_whatweb(target: str) -> str:
     whatweb -a 3 — fingerprint web technologies, CMS, frameworks, headers
     -a 3 : aggression level 3 (active but not destructive)
     """
-    print(f"  [*] whatweb -a 3 {target}")
+    logs.emit(f"  {CYAN}▸ whatweb{RESET} {DIM}-a 3 {target}{RESET}")
     return run_tool(["whatweb", "-a", "3", target], timeout=60)
 
 
@@ -83,7 +94,7 @@ def run_curl_headers(target: str) -> str:
     curl -sI — fetch HTTP headers only
     Reveals: server software, X-Powered-By, cookies, security headers (or lack of them)
     """
-    print(f"  [*] curl -sI http://{target}")
+    logs.emit(f"  {CYAN}▸ curl{RESET} {DIM}-sI http(s)://{target}{RESET}")
     output = run_tool([
         "curl", "-sI",
         "--max-time", "10",
@@ -108,7 +119,7 @@ def run_dig(target: str) -> str:
     dig — DNS records: A, MX, NS, TXT
     Useful for subdomains, mail servers, SPF/DKIM info
     """
-    print(f"  [*] dig {target} ANY")
+    logs.emit(f"  {CYAN}▸ dig{RESET} {DIM}{target} (A/MX/NS/TXT){RESET}")
     a_record  = run_tool(["dig", "+short", "A",   target], timeout=15)
     mx_record = run_tool(["dig", "+short", "MX",  target], timeout=15)
     ns_record = run_tool(["dig", "+short", "NS",  target], timeout=15)
@@ -128,7 +139,7 @@ def run_nikto(target: str) -> str:
     Checks for outdated software, dangerous files, misconfigurations
     WARNING: noisy tool, only run with permission
     """
-    print(f"  [*] nikto -h {target}  (this may take a while...)")
+    logs.emit(f"  {CYAN}▸ nikto{RESET} {DIM}-h {target}  (peut être long…){RESET}")
     return run_tool(["nikto", "-h", target, "-nointeractive"], timeout=300)
 
 
@@ -152,8 +163,8 @@ def run_default_recon(target: str) -> dict:
     Returns a dict of {tool_name: output_string}.
     Nikto is excluded by default — too slow/noisy for auto-run.
     """
-    print(f"\n[*] Starting recon on: {target}")
-    print("─" * 50)
+    logs.emit(f"\n{BOLD}{CYAN}[*] Recon sur : {target}{RESET}")
+    logs.emit(DIM + "─" * 50 + RESET)
 
     results = {}
     results["nmap"]         = run_nmap(target)
@@ -162,8 +173,8 @@ def run_default_recon(target: str) -> dict:
     results["curl_headers"] = run_curl_headers(target)
     results["dig"]          = run_dig(target)
 
-    print("─" * 50)
-    print("[+] Recon complete.\n")
+    logs.emit(DIM + "─" * 50 + RESET)
+    logs.emit(f"{GREEN}[+] Recon terminée.{RESET}\n")
     return results
 
 
@@ -212,13 +223,13 @@ def interactive_tool_run(target: str) -> str:
     Let user manually pick which tools to run.
     Returns combined output string.
     """
-    print("\n[ SELECT TOOLS TO RUN ]")
+    print(f"\n{BOLD}{CYAN}[ SÉLECTION DES OUTILS DE RECON ]{RESET}")
     for key, (name, _) in TOOLS_MENU.items():
-        print(f"  [{key}] {name}")
-    print("  [a] Run all (except nikto)")
-    print("  [n] Run all + nikto (slow)")
+        print(f"  {GREEN}[{key}]{RESET} {name}")
+    print(f"  {GREEN}[a]{RESET} {DIM}Tout lancer (sauf nikto){RESET}")
+    print(f"  {GREEN}[n]{RESET} {DIM}Tout lancer + nikto (lent){RESET}")
 
-    choice = input("\nChoice(s) e.g. 1 2 4 or a: ").strip().lower()
+    choice = input(f"\n{CYAN}Choix (ex: 1 2 4 ou a) :{RESET} ").strip().lower()
 
     if choice == "a":
         results = run_default_recon(target)
@@ -233,10 +244,10 @@ def interactive_tool_run(target: str) -> str:
     for key in choice.split():
         if key in TOOLS_MENU:
             name, func = TOOLS_MENU[key]
-            print(f"\n[*] Running {name}...")
+            print(f"\n{CYAN}[*] Lancement : {name}...{RESET}")
             combined[name] = func(target)
         else:
-            print(f"[!] Unknown option: {key}")
+            print(f"{YELLOW}[!] Option inconnue : {key}{RESET}")
 
     return format_recon_for_llm(combined)
 

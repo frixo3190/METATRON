@@ -1,0 +1,246 @@
+/* METATRON — thème Textual */
+
+Screen {
+    background: $surface;
+    color: $text;
+}
+
+Header {
+    background: $panel;
+    color: $text;
+}
+
+Footer {
+    background: $panel;
+}
+
+#banner {
+    text-align: center;
+    padding: 1 2;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#menu {
+    margin: 1 2;
+    height: auto;
+    max-height: 16;
+    border: round $primary;
+    background: $panel;
+    width: 60;
+}
+#menu ListItem {
+    padding: 0 1;
+}
+
+#menu ListItem > Label {
+    padding: 1;
+}
+
+#ph-title {
+    text-align: center;
+    padding: 1;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#ph-msg {
+    text-align: center;
+    padding: 2;
+    margin: 1 2;
+    color: $text-muted;
+}
+
+/* ── Paramètres ── */
+#settings-info {
+    padding: 1 2;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#settings-menu {
+    margin: 1 2;
+    height: auto;
+    max-height: 22;
+    border: round $primary;
+    background: $panel;
+}
+
+#settings-menu ListItem {
+    padding: 0 1;
+}
+
+#settings-menu ListItem > Label {
+    padding: 1;
+}
+
+/* ── Sélection de modèle ── */
+#model-title {
+    padding: 1 2;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#model-status {
+    padding: 0 2;
+    margin: 0 2;
+}
+
+#model-search {
+    margin: 1 2 0 2;
+    border: round $primary;
+}
+
+#model-list {
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+}
+
+/* ── Modals ── */
+#key-dialog {
+    width: 60;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    border: thick $error;
+    background: $panel;
+}
+
+#key-title, #test-title {
+    text-align: center;
+    padding: 1;
+}
+
+#key-input {
+    margin: 1 0;
+}
+
+#test-status, #test-result {
+    margin: 1 2;
+    padding: 1;
+}
+
+#test-result {
+    border: round $primary;
+    background: $panel;
+    min-height: 5;
+}
+
+/* ── Historique ── */
+#history-title, #session-header, #run-title {
+    padding: 1 2;
+    margin: 1 2;
+    border: heavy $error;
+    background: $panel;
+}
+
+#history-status {
+    padding: 0 2;
+    margin: 0 2;
+}
+
+#history-table {
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+}
+
+#history-table DataTable, #vulns-table, #fixes-table, #exploits-table {
+    background: $panel;
+}
+
+#analysis-text {
+    padding: 1;
+    margin: 1;
+}
+
+#run-log {
+    padding: 1;
+    margin: 1 2;
+    border: round $primary;
+    background: $panel;
+    min-height: 10;
+}
+
+/* ── Modals ── */
+#export-dialog, #confirm-dialog, #lang-dialog {
+    width: 60;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    border: thick $error;
+    background: $panel;
+}
+
+#export-title, #lang-title {
+    text-align: center;
+    padding: 1;
+}
+
+#confirm-msg {
+    padding: 1;
+    margin-bottom: 1;
+}
+
+/* ── Accueil (menu + bannière METATRON) ── */
+#menu-root {
+    align: center middle;
+    height: auto;
+}
+
+#angel {
+    height: auto;
+    width: auto;
+    color: $error;
+    text-align: center;
+    content-align: center middle;
+}
+
+/* ── Session : listes d'items (texte qui retourne à la ligne) ── */
+#vulns-list, #fixes-list, #exploits-list {
+    background: $panel;
+    padding: 1;
+}
+
+#vulns-list ListItem, #fixes-list ListItem, #exploits-list ListItem {
+    padding: 0;
+}
+
+/* ── Chat IA (split view) ── */
+#chat-left {
+    width: 3fr;
+    border: round $primary;
+    background: $panel;
+}
+
+#chat-right {
+    width: 2fr;
+    border: round $primary;
+    background: $panel;
+}
+
+#chat-title, #chat-context-title {
+    padding: 1;
+    text-align: center;
+    border-bottom: solid $primary;
+}
+
+#chat-log {
+    height: 1fr;
+    background: $panel;
+    padding: 0 1;
+}
+
+#chat-input {
+    margin: 0 1 1 1;
+}
+
+#chat-context {
+    padding: 1;
+    margin: 1;
+}

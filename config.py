@@ -15,6 +15,12 @@ DEFAULTS = {
     "provider": "ollama",          # "ollama" | "openrouter"
     "api_key":  "",                # OpenRouter API key
     "model":    "metatron-qwen",   # active model (Ollama name or OpenRouter id)
+    "language": "en",              # "en" | "fr" — langue des analyses
+}
+
+LANGUAGES = {
+    "en": "Anglais",
+    "fr": "Français",
 }
 
 

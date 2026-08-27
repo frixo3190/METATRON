@@ -12,6 +12,7 @@ import json
 from tools import run_tool_by_command, run_nmap, run_curl_headers
 from search import handle_search_dispatch
 import config
+import logs
 
 OLLAMA_URL  = "http://localhost:11434/api/chat"
 OPENROUTER_URL        = "https://openrouter.ai/api/v1/chat/completions"
@@ -24,6 +25,29 @@ MAX_TOKENS = 8192
 MAX_TOOL_LOOPS = 9   # max times AI can call tools per session
 OLLAMA_TIMEOUT = 600
 OPENROUTER_TIMEOUT = 300
+
+# ── Couleurs (affichage console uniquement) ──
+GREEN  = "\033[92m"
+CYAN   = "\033[96m"
+YELLOW = "\033[93m"
+RED    = "\033[91m"
+BOLD   = "\033[1m"
+DIM    = "\033[90m"
+RESET  = "\033[0m"
+
+
+def language_instruction() -> str:
+    """Retourne une instruction de langue (ou chaîne vide pour l'anglais)."""
+    lang = config.get("language", "en").lower()
+    if lang == "fr":
+        return (
+            "\n\nIMPORTANT — LANGUE : rédige TOUTE ton analyse en français "
+            "(vulnérabilités, descriptions, correctifs, exploits, notes et résumé). "
+            "Conserve exactement les balises VULN:, SEVERITY:, PORT:, SERVICE:, "
+            "DESC:, FIX:, EXPLOIT:, RESULT:, NOTES:, RISK_LEVEL: et SUMMARY:, "
+            "mais avec le contenu en français."
+        )
+    return ""
 
 # ─────────────────────────────────────────────
 # SYSTEM PROMPT
@@ -56,11 +80,26 @@ EXPLOIT: <name> | TOOL: <tool> | PAYLOAD: <payload or description>
 RESULT: <expected result>
 NOTES: <any notes>
 
+Output format for attacks (use this exactly, one block per vulnerability):
+ATTACK: <name> | TOOLS: <tool1, tool2> | TARGET: <ip:port>
+ATTACK_CMDS:
+<command 1>
+<command 2>
+<command 3>
+
 End your analysis with:
 RISK_LEVEL: <CRITICAL|HIGH|MEDIUM|LOW>
 SUMMARY: <2-3 sentence overall summary>
 IMPORTANT: Never use markdown bold (**text**) or 
 headers (## text). Plain text only. No exceptions.
+IMPORTANT RULES FOR ATTACK BLOCKS:
+- For each vulnerability, write an ATTACK block that describes EXACTLY how to
+  perform the attack from Kali Linux: the tools to use and the commands to type,
+  in the correct order, one per line after ATTACK_CMDS:
+- Commands must be real, concrete and ready to paste (replace placeholders like
+  <TARGET> or <IP> with the actual target).
+- No commentary inside the commands block, only commands.
+- If the attack is not safe or not applicable, write: ATTACK: none
 IMPORTANT RULES FOR ACCURACY:
 - nmap filtered or no-response means INCONCLUSIVE not vulnerable
 - Never assert a server version without seeing it in scan output
@@ -98,11 +137,11 @@ def ask_ollama(messages: list, max_tokens: int = MAX_TOKENS,
                 "top_p": 0.9,
             }
         }
-        print(f"\n[*] Sending to Ollama ({model})...")
+        logs.emit(f"\n[*] Sending to Ollama ({model})...")
         resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
-        response = data.get("message", {}).get("content", "").strip()
+        response = ((data.get("message") or {}).get("content") or "").strip()
         if not response:
             return "[!] Model returned empty response."
         return response
@@ -140,7 +179,7 @@ def ask_openrouter(messages: list, max_tokens: int = MAX_TOKENS,
     }
 
     try:
-        print(f"\n[*] Sending to OpenRouter ({model})...")
+        logs.emit(f"\n[*] Sending to OpenRouter ({model})...")
         resp = requests.post(OPENROUTER_URL, json=payload,
                              headers=headers, timeout=OPENROUTER_TIMEOUT)
 
@@ -159,7 +198,8 @@ def ask_openrouter(messages: list, max_tokens: int = MAX_TOKENS,
         choices = data.get("choices", [])
         if not choices:
             return "[!] OpenRouter: réponse sans choix (choices vide)."
-        response = choices[0].get("message", {}).get("content", "").strip()
+        message  = choices[0].get("message") or {}
+        response = (message.get("content") or "").strip()
         if not response:
             return "[!] OpenRouter: le modèle a renvoyé une réponse vide."
         return response
@@ -215,16 +255,16 @@ def fetch_openrouter_models() -> list:
     raw, err = _fetch_models_raw()
 
     if err == "unauthorized":
-        print("\033[91m[✗] Clé API invalide (401).\033[0m")
+        logs.emit("\033[91m[✗] Clé API invalide (401).\033[0m")
         return []
     if err == "network":
-        print("\033[91m[✗] Impossible de joindre OpenRouter. Vérifie ta connexion.\033[0m")
+        logs.emit("\033[91m[✗] Impossible de joindre OpenRouter. Vérifie ta connexion.\033[0m")
         return []
     if err == "timeout":
-        print("\033[91m[✗] Timeout lors de la récupération des modèles.\033[0m")
+        logs.emit("\033[91m[✗] Timeout lors de la récupération des modèles.\033[0m")
         return []
     if err:
-        print(f"\033[91m[✗] Erreur lors de la récupération des modèles ({err}).\033[0m")
+        logs.emit(f"\033[91m[✗] Erreur lors de la récupération des modèles ({err}).\033[0m")
         return []
 
     def _to_per_million(val):
@@ -430,7 +470,7 @@ def run_tool_calls(calls: list) -> str:
 
     results = ""
     for call_type, call_content in calls:
-        print(f"\n  [DISPATCH] {call_type}: {call_content}")
+        logs.emit(f"\n  {CYAN}▸ [{call_type}]{RESET} {BOLD}{call_content}{RESET}")
 
         if call_type == "TOOL":
             output = run_tool_by_command(call_content)
@@ -470,7 +510,8 @@ def parse_vulnerabilities(response: str) -> list:
                 "port":        "",
                 "service":     "",
                 "description": "",
-                "fix":         ""
+                "fix":         "",
+                "attack":      ""
             }
 
             # parse header line: VULN: name | SEVERITY: x | PORT: x | SERVICE: x
@@ -486,9 +527,10 @@ def parse_vulnerabilities(response: str) -> list:
                 elif part.startswith("SERVICE:"):
                     vuln["service"] = part.replace("SERVICE:", "").strip()
 
-            # look ahead for DESC: and FIX: lines
+            # look ahead for DESC:, FIX:, ATTACK:/ATTACK_CMDS: lines
+            attack_lines = []
             j = i + 1
-            while j < len(lines) and j <= i + 5:
+            while j < len(lines):
                 next_line = _clean(lines[j])
                 if next_line.startswith(("VULN:", "EXPLOIT:", "RISK_LEVEL:", "SUMMARY:")):
                     break
@@ -496,7 +538,26 @@ def parse_vulnerabilities(response: str) -> list:
                     vuln["description"] = next_line.replace("DESC:", "").strip()
                 elif next_line.startswith("FIX:"):
                     vuln["fix"] = next_line.replace("FIX:", "").strip()
+                elif next_line.startswith("ATTACK_CMDS:"):
+                    attack_lines.append(next_line)
+                    # collect command lines until next known tag or empty separator
+                    k = j + 1
+                    while k < len(lines):
+                        cmd = _clean(lines[k])
+                        if cmd.startswith(("VULN:", "EXPLOIT:", "RISK_LEVEL:", "SUMMARY:", "ATTACK:", "DESC:", "FIX:")):
+                            break
+                        if cmd == "":
+                            k += 1
+                            continue
+                        attack_lines.append(cmd)
+                        k += 1
+                    j = k - 1
+                elif next_line.startswith("ATTACK:"):
+                    attack_lines.append(next_line)
                 j += 1
+
+            if attack_lines:
+                vuln["attack"] = "\n".join(attack_lines)
 
             if vuln["vuln_name"]:
                 vulns.append(vuln)
@@ -574,7 +635,7 @@ def analyse_target(target: str, raw_scan: str) -> dict:
     messages = [
         {
             "role": "system",
-            "content": SYSTEM_PROMPT
+            "content": SYSTEM_PROMPT + language_instruction()
         },
         {
             "role": "user",
@@ -593,16 +654,16 @@ List all vulnerabilities, fixes, and suggest exploits where applicable."""
     for loop in range(MAX_TOOL_LOOPS):
         response = ask_llm(messages)
 
-        print(f"\n{'─'*60}")
-        print(f"[METATRON - Round {loop + 1}]")
-        print(f"{'─'*60}")
-        print(response)
+        logs.emit(f"\n{BOLD}{CYAN}{'═'*60}{RESET}")
+        logs.emit(f"{BOLD}{CYAN}  METATRON — Analyse — Tour {loop + 1}{RESET}")
+        logs.emit(f"{BOLD}{CYAN}{'═'*60}{RESET}")
+        logs.emit(response)
 
         final_response = response
 
         tool_calls = extract_tool_calls(response)
         if not tool_calls:
-            print("\n[*] No tool calls. Analysis complete.")
+            logs.emit(f"\n{GREEN}  [✓] Analyse terminée — aucun appel d'outil.{RESET}")
             break
 
         tool_results = run_tool_calls(tool_calls)
@@ -626,7 +687,8 @@ If analysis is complete, give the final RISK_LEVEL and SUMMARY."""
     risk_level      = parse_risk_level(final_response)
     summary         = parse_summary(final_response)
 
-    print(f"\n[+] Parsed: {len(vulnerabilities)} vulns, {len(exploits)} exploits | Risk: {risk_level}")
+    logs.emit(f"\n{GREEN}[+] Résultat : {len(vulnerabilities)} vuln(s), "
+              f"{len(exploits)} exploit(s) | Risque : {BOLD}{risk_level}{RESET}")
 
     return {
         "full_response":   final_response,

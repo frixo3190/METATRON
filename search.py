@@ -9,6 +9,7 @@ Used by LLM tool dispatch when AI writes [SEARCH: query]
 import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS   # pip install duckduckgo-search
+import logs
 
 
 # ─────────────────────────────────────────────
@@ -21,7 +22,7 @@ def web_search(query: str, max_results: int = 5) -> str:
     No API key. No rate limit issues for reasonable usage.
     Returns a string ready to paste into LLM prompt.
     """
-    print(f"  [*] Searching: {query}")
+    logs.emit(f"  [*] Searching: {query}")
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
@@ -51,7 +52,7 @@ def search_cve(cve_id: str) -> str:
     Search for a specific CVE.
     Queries DDG then also hits cve.mitre.org directly.
     """
-    print(f"  [*] Looking up {cve_id}...")
+    logs.emit(f"  [*] Looking up {cve_id}...")
 
     # DDG search first
     ddg_results = web_search(f"{cve_id} vulnerability exploit details", max_results=3)

@@ -157,6 +157,19 @@ do_push() {
     fi
 }
 
+do_force_push() {
+    if [[ -n "$PUSH_REMOTE" ]]; then
+        git -C "$SCRIPT_DIR" push --force-with-lease "$PUSH_REMOTE" "$BRANCH"
+    else
+        git -C "$SCRIPT_DIR" push --force-with-lease
+    fi
+}
+
+remote_ahead_count() {
+    # Nombre de commits présents sur le remote mais ABSENTS en local.
+    git -C "$SCRIPT_DIR" rev-list --count "HEAD..$1" 2>/dev/null || echo "0"
+}
+
 verify_push() {
     # Vérifie que HEAD est bien présent sur le remote poussé.
     local remote head
@@ -166,34 +179,74 @@ verify_push() {
     git -C "$SCRIPT_DIR" ls-remote "$remote" "refs/heads/$BRANCH" 2>/dev/null | grep -q "$head"
 }
 
-if ask_fix "Pousser vers le dépôt distant"; then
-    if do_push; then
-        if verify_push; then
-            ok "Push réussi et vérifié (HEAD présent sur le remote)."
+# Récupère l'état du remote pour détecter un éventuel écrasement.
+REMOTE_ONLY="0"
+if [[ -n "$PUSH_REMOTE" ]]; then
+    git -C "$SCRIPT_DIR" fetch "$PUSH_REMOTE" "$BRANCH" >/dev/null 2>&1
+    REMOTE_ONLY="$(remote_ahead_count "$PUSH_REMOTE/$BRANCH")"
+fi
+
+# ── Cas 1 : le remote a une version plus récente (risque d'écrasement) ──
+if [[ "${REMOTE_ONLY:-0}" -gt 0 ]]; then
+    warn "ATTENTION : le remote « ${PUSH_REMOTE:-distant} » possède ${REMOTE_ONLY} commit(s) ABSENT(S) en local."
+    warn "Un push normal sera rejeté (non-fast-forward)."
+    warn "Un push forcé ÉCRASERA cette version plus récente sur GitHub."
+    echo
+    if ask_fix "Forcer le push malgré tout (écrase la version distante)"; then
+        if do_force_push; then
+            ok "Push forcé réussi."
         else
-            ok "Push réussi (sortie git OK)."
+            fail "Push forcé échoué (voir erreur git ci-dessus)."
+            info "Dernier recours manuel : git push --force ${PUSH_REMOTE:-} ${BRANCH:-}"
         fi
     else
-        fail "Le push a échoué (voir erreur git ci-dessus)."
-        while true; do
-            echo
-            warn "Causes possibles :"
-            warn "  - Pas de droit d'écriture sur ce remote (ex: upstream d'un fork)."
-            warn "  - URL du remote incorrecte ou dépôt inexistant."
-            if [[ -n "$PUSH_REMOTE" ]]; then
-                info "Remote « $PUSH_REMOTE » : $(git -C "$SCRIPT_DIR" remote get-url "$PUSH_REMOTE" 2>/dev/null)"
-                info "Corrige l'URL : git remote set-url $PUSH_REMOTE <URL>"
+        info "Push forcé annulé — le commit local est conservé."
+    fi
+else
+    # ── Cas 2 : push normal ──
+    if ask_fix "Pousser vers le dépôt distant"; then
+        if do_push; then
+            if verify_push; then
+                ok "Push réussi et vérifié (HEAD présent sur le remote)."
+            else
+                ok "Push réussi (sortie git OK)."
             fi
-            if ! ask_fix "Réessayer le push"; then
-                warn "Push non effectué — le commit local est conservé."
-                break
-            fi
-            if do_push; then
-                ok "Push réussi."
-                break
-            fi
-            fail "Nouvel échec du push (voir erreur git ci-dessus)."
-        done
+        else
+            fail "Le push a échoué (voir erreur git ci-dessus)."
+            while true; do
+                echo
+                warn "Causes possibles :"
+                warn "  - Pas de droit d'écriture sur ce remote (ex: upstream d'un fork)."
+                warn "  - URL du remote incorrecte ou dépôt inexistant."
+                warn "  - Remote en avance (non-fast-forward) → force push nécessaire."
+                if [[ -n "$PUSH_REMOTE" ]]; then
+                    info "Remote « $PUSH_REMOTE » : $(git -C "$SCRIPT_DIR" remote get-url "$PUSH_REMOTE" 2>/dev/null)"
+                    info "Corrige l'URL : git remote set-url $PUSH_REMOTE <URL>"
+                fi
+
+                # Re-vérifier si le remote est passé en avance entre-temps
+                if [[ -n "$PUSH_REMOTE" ]]; then
+                    git -C "$SCRIPT_DIR" fetch "$PUSH_REMOTE" "$BRANCH" >/dev/null 2>&1
+                    REMOTE_ONLY="$(remote_ahead_count "$PUSH_REMOTE/$BRANCH")"
+                fi
+                if [[ "${REMOTE_ONLY:-0}" -gt 0 ]]; then
+                    warn "Le remote a ${REMOTE_ONLY} commit(s) absent(s) en local."
+                    if ask_fix "Forcer le push (écrase la version distante)"; then
+                        if do_force_push; then ok "Push forcé réussi."; break; fi
+                        fail "Push forcé échoué (voir erreur git ci-dessus)."
+                        continue
+                    fi
+                fi
+
+                if ask_fix "Réessayer le push normal"; then
+                    if do_push; then ok "Push réussi."; break; fi
+                    fail "Nouvel échec du push (voir erreur git ci-dessus)."
+                else
+                    warn "Push non effectué — le commit local est conservé."
+                    break
+                fi
+            done
+        fi
     fi
 fi
 
